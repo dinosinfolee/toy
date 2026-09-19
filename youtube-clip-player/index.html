@@ -108,6 +108,8 @@ main{flex:1 1 auto;min-height:0;padding-top:14px}
 .player-err.on{display:flex}
 .player-empty b,.player-err b{color:#E4E3E1;font-size:15px;font-weight:600}
 .player-err .msg{color:#B3B2AF;max-width:440px;line-height:1.6}
+.player-err .sub{display:none;color:#8E8D8A;max-width:460px;line-height:1.65;font-size:12.5px;margin-top:-2px}
+.player-err .sub.on{display:block}
 .player-err .row,.player-empty .row{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;justify-content:center}
 .player-empty .btn{background:#2A2A28;border-color:#3B3B38;color:#E4E3E1}
 .player-empty .btn:hover{background:#3A3A37}
@@ -355,25 +357,32 @@ textarea.json:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-sof
    브라우저 전체화면(F11 같은)은 클릭이 있어야 켤 수 있어서,
    클릭 없이도 크게 보도록 이 레이아웃을 따로 둔다.
    ========================================================= */
-body.big{background:#000}
+body.big{background:#000;--barh:58px}
 body.big header.top,
 body.big .side,
 body.big .manual{display:none}
 body.big .app{padding:0;max-width:none}
 body.big main{padding-top:0}
 body.big .pane.on{grid-template-columns:minmax(0,1fr);gap:0}
-body.big .stage{gap:0;height:100%}
+
+/* 영상은 화면 가운데에 16:9 그대로 두고, 아래 막대만큼은 비워 둔다.
+   화면을 꽉 채우면 유튜브 자체 컨트롤과 '광고 건너뛰기' 버튼이
+   이 막대에 가려 눌리지 않는다. */
+body.big .stage{
+  gap:0;height:100vh;box-sizing:border-box;
+  align-items:center;justify-content:center;
+  padding-bottom:var(--barh);
+}
 body.big .player-box{
-  max-width:none;width:100vw;height:100vh;border-radius:0;aspect-ratio:auto;box-shadow:none;
+  margin:0;border-radius:0;box-shadow:none;aspect-ratio:16/9;
+  width:min(100vw, calc((100vh - var(--barh)) * 16 / 9));
+  max-width:100vw;height:auto;max-height:calc(100vh - var(--barh));
 }
 body.big .stage-bar{
-  position:fixed;left:0;right:0;bottom:0;z-index:50;
-  padding:12px 18px;margin:0;background:rgba(16,16,16,.88);
-  backdrop-filter:blur(8px);opacity:0;transform:translateY(8px);
-  transition:opacity .2s,transform .2s;pointer-events:none;
+  position:fixed;left:0;right:0;bottom:0;z-index:50;height:var(--barh);
+  padding:0 18px;margin:0;background:#101010;flex-wrap:nowrap;
+  opacity:1;transform:none;pointer-events:auto;
 }
-body.big .stage-bar:hover,
-body.big.show-bar .stage-bar{opacity:1;transform:translateY(0);pointer-events:auto}
 body.big .now{color:#A9A7A2}
 body.big .now .np-idx{background:rgba(255,255,255,.14);color:#D8D6D1}
 body.big .now .np-title{color:#fff}
@@ -436,6 +445,7 @@ body.big .btn.solid:hover{background:#E8E6E2;border-color:#E8E6E2}
           <div class="player-err" id="viewErr">
             <b>재생할 수 없어요</b>
             <span class="msg"></span>
+            <span class="sub"></span>
             <div class="row">
               <a class="btn" target="_blank" rel="noopener" data-open>유튜브에서 열기 ↗</a>
               <button type="button" class="btn primary" data-skip>다음 구간 ▸</button>
@@ -478,6 +488,7 @@ body.big .btn.solid:hover{background:#E8E6E2;border-color:#E8E6E2}
           <div class="player-err" id="editErr">
             <b>재생할 수 없어요</b>
             <span class="msg"></span>
+            <span class="sub"></span>
             <div class="row">
               <a class="btn" target="_blank" rel="noopener" data-open>유튜브에서 열기 ↗</a>
               <button type="button" class="btn primary" data-skip>다음 구간 ▸</button>
@@ -1054,6 +1065,11 @@ var ERR_MSG = {
   150: '이 영상은 저작권자가 외부 사이트 재생(임베드)을 막아 뒀어요.'
 };
 
+/* 101 · 150 은 유튜브에서 구입·대여한 영화도 같은 코드로 떨어진다.
+   왜 여기서는 안 되는지까지 알려 준다. */
+var EMBED_SUB = '유튜브에서 구입하거나 대여한 영화일 경우, 구입한 계정으로 로그인된 상태여야 해요.';
+var ERR_SUB = { 101: EMBED_SUB, 150: EMBED_SUB };
+
 function Deck(hostId, emptyId, errId, onChange){
   this.hostId = hostId;
   this.emptyId = emptyId;
@@ -1075,6 +1091,17 @@ function Deck(hostId, emptyId, errId, onChange){
   this.lastAdv = 0;
 }
 
+/**
+ * 자막 끄기. playerVars 의 cc_load_policy 만으로는 부족한 경우가 있어
+ * 자막 모듈 자체를 내린다. 영상이 바뀌면 다시 붙으므로 재생할 때마다 호출한다.
+ */
+Deck.prototype._noCaptions = function(){
+  var p = this.player;
+  if (!p) return;
+  try { p.unloadModule('captions'); } catch(err){}
+  try { p.unloadModule('cc'); } catch(err){}
+};
+
 Deck.prototype.init = function(cb){
   var self = this;
   if (self.player){ cb && cb(); return; }
@@ -1082,10 +1109,11 @@ Deck.prototype.init = function(cb){
     if (self.player){ cb && cb(); return; }
     self.player = new YT.Player(self.hostId, {
       host: 'https://www.youtube.com',
-      playerVars: { rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:1 },
+      playerVars: { rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:1, cc_load_policy:0 },
       events: {
         onReady: function(){
           self.ready = true;
+          self._noCaptions();
           if (self.pending !== null){
             var p = self.pending, k = self.pendingKind;
             self.pending = null; self.pendingKind = null;
@@ -1096,6 +1124,7 @@ Deck.prototype.init = function(cb){
         onStateChange: function(e){
           if (e.data === YT.PlayerState.PLAYING){
             self.hideError();
+            self._noCaptions();
             if (self.previewing){          /* 시작 지점 프레임만 보여주고 바로 정지 */
               self.previewing = false;
               clearTimeout(self._pvTimer);
@@ -1272,6 +1301,11 @@ Deck.prototype.showError = function(code){
   var item = this.queue[this.pos];
   box.querySelector('.msg').textContent =
     (ERR_MSG[code] || '유튜브가 재생을 거부했어요.') + (code ? ' (코드 ' + code + ')' : '');
+  var sub = box.querySelector('.sub');
+  if (sub){
+    sub.textContent = ERR_SUB[code] || '';
+    sub.classList.toggle('on', !!ERR_SUB[code]);
+  }
   var a = box.querySelector('[data-open]');
   if (item){
     var t = Math.floor(item.start || 0);
