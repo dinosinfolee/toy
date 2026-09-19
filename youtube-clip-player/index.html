@@ -649,7 +649,7 @@ body.big .btn.solid:hover{background:#E8E6E2;border-color:#E8E6E2}
           <li>보관 방법은 두 가지임 — <b>.json 파일로 내려받기</b>, <b>공유 링크 만들기</b>.</li>
           <li><b>자동 저장은 없습니다.</b> 저장하지 않고 창을 닫거나 새로고침하면 작업 내용이 사라집니다.</li>
           <li>공유 링크를 연 사람이 내용을 고쳐도 <b>원본 링크에는 반영되지 않습니다.</b> 고친 내용은 따로 저장해야 남습니다.</li>
-          <li>크롬 확장 프로그램 <b>YouTube Segment Player</b>을 쓰면 작업 내용이 자동 저장되고,
+          <li>크롬 확장 프로그램 <b>유튜브 구간 재생</b>을 쓰면 작업 내용이 자동 저장되고,
               <b>구입·대여한 영상</b>도 재생할 수 있습니다. 이 페이지는 그 확장이 만든 링크를 열어 보는 용도이기도 합니다.</li>
         </ul>
 
@@ -1102,13 +1102,31 @@ Deck.prototype._noCaptions = function(){
   try { p.unloadModule('cc'); } catch(err){}
 };
 
+/* 첫 구간의 영상 ID. 플레이어를 만들 때 이걸 넘겨 주면 iframe 주소가
+   youtube.com/embed/<ID> 가 된다. 크롬 확장이 이 프레임을 알아보려면
+   주소에 ID 가 있어야 해서, 비워 두지 않는다. */
+Deck.prototype._firstVideoId = function(){
+  var q = this.queue || [];
+  for (var i = 0; i < q.length; i++){ if (q[i] && q[i].videoId) return q[i].videoId; }
+  try {
+    var all = (typeof state !== 'undefined' && state && state.clips) ? state.clips : [];
+    for (var j = 0; j < all.length; j++){
+      var v = videoIdOf(all[j] && all[j].url);
+      if (v) return v;
+    }
+  } catch(err){}
+  return '';
+};
+
 Deck.prototype.init = function(cb){
   var self = this;
   if (self.player){ cb && cb(); return; }
   whenYT(function(){
     if (self.player){ cb && cb(); return; }
+    var first = self._firstVideoId();
     self.player = new YT.Player(self.hostId, {
       host: 'https://www.youtube.com',
+      videoId: first || undefined,
       playerVars: { rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:1, cc_load_policy:0 },
       events: {
         onReady: function(){
