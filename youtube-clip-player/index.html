@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YouTube 구간 편집</title>
+<title>유튜브 구간 재생</title>
 <style>
 /* ===== Notion-ish design tokens ===== */
 :root{
@@ -350,6 +350,43 @@ textarea.json:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-sof
 }
 #toast.on{opacity:1;transform:translate(-50%,0)}
 
+/* =========================================================
+   극장 모드 — 화면 전체를 플레이어로.
+   브라우저 전체화면(F11 같은)은 클릭이 있어야 켤 수 있어서,
+   클릭 없이도 크게 보도록 이 레이아웃을 따로 둔다.
+   ========================================================= */
+body.big{background:#000}
+body.big header.top,
+body.big .side,
+body.big .manual{display:none}
+body.big .app{padding:0;max-width:none}
+body.big main{padding-top:0}
+body.big .pane.on{grid-template-columns:minmax(0,1fr);gap:0}
+body.big .stage{gap:0;height:100%}
+body.big .player-box{
+  max-width:none;width:100vw;height:100vh;border-radius:0;aspect-ratio:auto;box-shadow:none;
+}
+body.big .stage-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;
+  padding:12px 18px;margin:0;background:rgba(16,16,16,.88);
+  backdrop-filter:blur(8px);opacity:0;transform:translateY(8px);
+  transition:opacity .2s,transform .2s;pointer-events:none;
+}
+body.big .stage-bar:hover,
+body.big.show-bar .stage-bar{opacity:1;transform:translateY(0);pointer-events:auto}
+body.big .now{color:#A9A7A2}
+body.big .now .np-idx{background:rgba(255,255,255,.14);color:#D8D6D1}
+body.big .now .np-title{color:#fff}
+body.big .now .np-time{color:#A9A7A2}
+body.big .now .np-open{color:#A9A7A2;border-color:rgba(255,255,255,.28)}
+body.big .now .np-open:hover{color:#fff;border-color:#fff}
+body.big .transport{background:rgba(255,255,255,.12)}
+body.big .tbtn{color:#D5D3CF}
+body.big .tbtn:hover{background:rgba(255,255,255,.2);color:#fff;box-shadow:none}
+body.big .tsep{background:rgba(255,255,255,.22)}
+body.big .btn.solid{background:#fff;border-color:#fff;color:#141414}
+body.big .btn.solid:hover{background:#E8E6E2;border-color:#E8E6E2}
+
 @media (max-width:1000px){
   body{overflow:auto}
   .app{height:auto;min-height:100%;padding:0 16px 24px}
@@ -413,6 +450,8 @@ textarea.json:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-sof
             <button type="button" class="tbtn" id="vNext"   title="다음 구간"      data-ico="next"></button>
             <span class="tsep"></span>
             <button type="button" class="tbtn" id="vStop"   title="정지"           data-ico="stop"></button>
+            <span class="tsep"></span>
+            <button type="button" class="tbtn" id="vBig" title="크게 보기 (F)" data-ico="expand"></button>
           </div>
           <button type="button" class="btn solid" id="vPlayAll" title="첫 구간부터 이어서 재생"><span data-ico="playS"></span>처음부터 재생</button>
         </div>
@@ -484,7 +523,7 @@ textarea.json:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-sof
     </div>
     <div class="m-body scroll">
       <div class="m-label">파일 이름</div>
-      <input class="inp" id="saveName" placeholder="YouTube 구간 편집" autocomplete="off">
+      <input class="inp" id="saveName" placeholder="유튜브 구간 재생" autocomplete="off">
 
       <div class="m-label">JSON 내용</div>
       <textarea class="json scroll" id="saveJsonBox" spellcheck="false"></textarea>
@@ -599,7 +638,7 @@ textarea.json:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-sof
           <li>보관 방법은 두 가지임 — <b>.json 파일로 내려받기</b>, <b>공유 링크 만들기</b>.</li>
           <li><b>자동 저장은 없습니다.</b> 저장하지 않고 창을 닫거나 새로고침하면 작업 내용이 사라집니다.</li>
           <li>공유 링크를 연 사람이 내용을 고쳐도 <b>원본 링크에는 반영되지 않습니다.</b> 고친 내용은 따로 저장해야 남습니다.</li>
-          <li>크롬 확장 프로그램 <b>유튜브 구간 편집</b>을 쓰면 작업 내용이 자동 저장되고,
+          <li>크롬 확장 프로그램 <b>YouTube Segment Player</b>을 쓰면 작업 내용이 자동 저장되고,
               <b>구입·대여한 영상</b>도 재생할 수 있습니다. 이 페이지는 그 확장이 만든 링크를 열어 보는 용도이기도 합니다.</li>
         </ul>
 
@@ -751,7 +790,9 @@ var SVG = (function(){
     next:  s('<path d="M16.6 5.4a1.1 1.1 0 0 1 2.2 0v13.2a1.1 1.1 0 0 1-2.2 0z"/><path d="M5.4 5.5l8.8 5.6a1.05 1.05 0 0 1 0 1.8l-8.8 5.6a1.05 1.05 0 0 1-1.6-.9V6.4a1.05 1.05 0 0 1 1.6-.9z"/>', true),
     replay: s('<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1M20.5 4v5.5H15"/>'),
     stop:  s('<rect x="6.2" y="6.2" width="11.6" height="11.6" rx="2.6"/>', true),
-    playS: s('<path d="M7.2 4.6v14.8L19.6 12z"/>', true)
+    playS: s('<path d="M7.2 4.6v14.8L19.6 12z"/>', true),
+    expand: s('<path d="M9 4H4v5"/><path d="M15 4h5v5"/><path d="M15 20h5v-5"/><path d="M9 20H4v-5"/>'),
+    shrink: s('<path d="M4 9h5V4"/><path d="M20 9h-5V4"/><path d="M20 15h-5v5"/><path d="M4 15h5v5"/>')
   };
 })();
 
@@ -1590,6 +1631,51 @@ onEl('eStop', 'click', function(){ editDeck.stop(); });
 onEl('vStop', 'click', function(){ viewDeck.stop(); });
 
 /* =========================================================
+   6-1. 극장 모드 / 전체화면
+   ---------------------------------------------------------
+   · 극장 모드 : 페이지 레이아웃만 바꾸는 것이라 클릭 없이도 켤 수 있다.
+   · 전체화면 : 브라우저가 사용자 클릭을 요구하므로 버튼을 눌렀을 때만.
+   ========================================================= */
+var bigOn = false, barTimer = null;
+
+function setBig(on, fromClick){
+  bigOn = !!on;
+  document.body.classList.toggle('big', bigOn);
+  var b = $id('vBig');
+  if (b) { b.innerHTML = bigOn ? SVG.shrink : SVG.expand; b.title = bigOn ? '원래대로 (F)' : '크게 보기 (F)'; }
+
+  if (bigOn){
+    peekBar();
+    /* 클릭에서 온 경우에만 진짜 전체화면까지 시도한다 */
+    if (fromClick && document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(function(){});
+    }
+  } else if (document.fullscreenElement && document.exitFullscreen){
+    document.exitFullscreen().catch(function(){});
+  }
+}
+
+/** 극장 모드에서 컨트롤을 잠깐 보여 준다 */
+function peekBar(){
+  document.body.classList.add('show-bar');
+  clearTimeout(barTimer);
+  barTimer = setTimeout(function(){ document.body.classList.remove('show-bar'); }, 2600);
+}
+
+onEl('vBig', 'click', function(){ setBig(!bigOn, true); });
+
+document.addEventListener('mousemove', function(){ if (bigOn) peekBar(); });
+document.addEventListener('keydown', function(e){
+  if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+  if (e.key === 'f' || e.key === 'F') setBig(!bigOn, true);
+  if (e.key === 'Escape' && bigOn && !document.fullscreenElement) setBig(false);
+});
+document.addEventListener('fullscreenchange', function(){
+  /* 브라우저 전체화면에서 빠져나오면 극장 모드도 함께 푼다 */
+  if (!document.fullscreenElement && bigOn) setBig(false);
+});
+
+/* =========================================================
    7. 모드 전환
    ========================================================= */
 function setMode(m){
@@ -1775,7 +1861,7 @@ onEl('btnOpenInline', 'click', function(){
 onEl('btnSave', 'click', function(){
   document.getElementById('saveJsonBox').value = toJson();
   var n = document.getElementById('saveName');
-  if (!n.value) n.value = (state.title || 'YouTube 구간 편집').replace(/[\\\/:*?"<>|]/g,'_');
+  if (!n.value) n.value = (state.title || '유튜브 구간 재생').replace(/[\\\/:*?"<>|]/g,'_');
   openMask('saveMask');
 });
 
@@ -1871,7 +1957,7 @@ onEl('btnApplyJson', 'click', function(){
       catch(err){ toast('링크 데이터 형식 오류: ' + err.message); }
     }
     if (!loaded){
-      state.title = 'YouTube 구간 편집';
+      state.title = '유튜브 구간 재생';
       setVal('pageTitle', state.title);
       state.clips = [ newClip('') ];
       renderEdit();
@@ -1884,6 +1970,11 @@ onEl('btnApplyJson', 'click', function(){
     else startMode = buildQueue().length ? 'view' : 'edit';
 
     setMode(startMode);
+
+    /* 링크에 big=1 이 붙어 있으면 바로 극장 모드로 연다 (클릭 없이 되는 범위까지) */
+    if (/[?&#]big=1/.test(location.hash + ' ' + location.search) && startMode === 'view'){
+      setBig(true, false);
+    }
   } catch(err){
     if (window.console && console.error) console.error(err);
     showFatal('초기화 실패: ' + (err && err.message ? err.message : err));
