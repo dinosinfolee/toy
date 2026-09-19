@@ -1081,7 +1081,7 @@ Deck.prototype.init = function(cb){
   whenYT(function(){
     if (self.player){ cb && cb(); return; }
     self.player = new YT.Player(self.hostId, {
-      host: 'https://www.youtube-nocookie.com',
+      host: 'https://www.youtube.com',
       playerVars: { rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:1 },
       events: {
         onReady: function(){
