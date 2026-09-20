@@ -383,6 +383,16 @@ body.big .stage-bar{
   padding:0 18px;margin:0;background:#101010;flex-wrap:nowrap;
   opacity:1;transform:none;pointer-events:auto;
 }
+/* 창이 좁으면 한 줄에 다 들어가지 않아 서로 겹친다.
+   제목 줄과 조작 줄을 위아래로 나누고, 그만큼 영상 자리를 줄인다. */
+@media (max-width:760px){
+  body.big{--barh:94px}
+  body.big .stage-bar{
+    height:auto;min-height:var(--barh);flex-wrap:wrap;align-content:center;
+    padding:9px 14px;gap:7px 10px;
+  }
+  body.big .now{flex:1 0 100%;min-width:0}
+}
 body.big .now{color:#A9A7A2}
 body.big .now .np-idx{background:rgba(255,255,255,.14);color:#D8D6D1}
 body.big .now .np-title{color:#fff}
@@ -1349,8 +1359,8 @@ var viewDeck = new Deck('viewPlayer', 'viewEmpty', 'viewErr', function(pos, item
     nodes[i].classList.toggle('on', !!(item && nodes[i].getAttribute('data-cid') === item.clipId));
   }
 });
-editDeck.onTime = function(t, item){ updateNowTime('editNow', t, item); };
-viewDeck.onTime = function(t, item){ updateNowTime('viewNow', t, item); };
+editDeck.onTime = function(t, item){ updateNowTime('editNow', t, item, editDeck); };
+viewDeck.onTime = function(t, item){ updateNowTime('viewNow', t, item, viewDeck); };
 
 /* 오류 오버레이 버튼 */
 function bindErrBox(id, deck){
@@ -1364,7 +1374,9 @@ bindErrBox('viewErr', viewDeck);
 function renderNow(hostId, pos, item, deck){
   var el = document.getElementById(hostId);
   if (!item){ el.innerHTML = ''; return; }
-  var range = fmtTime(item.start) + ' → ' + (item.end === null ? '끝' : fmtTime(item.end));
+  var before = elapsedBefore(deck.queue, pos);
+  var tot0 = queueTotal(deck.queue);
+  var range = fmtTime(before) + ' / ' + fmtTime(tot0.sec) + (tot0.unknown ? '+' : '');
   var t = Math.floor(item.start || 0);
   el.innerHTML =
     '<span class="np-idx">구간 ' + item.no + '/' + deck.queue.length + '</span>' +
@@ -1375,15 +1387,42 @@ function renderNow(hostId, pos, item, deck){
   el.querySelector('.np-title').textContent = displayName(item);
 }
 
-/** 재생 중에는 '지금 위치 · 남은 시간' 으로 (슬래시를 쓰지 않는다) */
-function updateNowTime(hostId, t, item){
+/* ---- 누적 시간 계산 ----
+   한 구간 안의 위치가 아니라, 재생목록 전체에서 지금 어디쯤인지를 보여 준다.
+   종료를 비워 둔 구간은 길이를 알 수 없어 합계에서 빠지고, 그때는 '+' 를 붙인다. */
+function clipLen(c){
+  if (!c || c.end === null || c.end === undefined) return null;
+  return Math.max(0, c.end - (c.start || 0));
+}
+function queueTotal(q){
+  var sum = 0, unknown = false;
+  for (var i = 0; i < (q || []).length; i++){
+    var L = clipLen(q[i]);
+    if (L === null) unknown = true; else sum += L;
+  }
+  return { sec: sum, unknown: unknown };
+}
+function elapsedBefore(q, pos){
+  var sum = 0;
+  for (var i = 0; i < pos && i < (q || []).length; i++){
+    var L = clipLen(q[i]);
+    if (L !== null) sum += L;
+  }
+  return sum;
+}
+
+/** 재생 중에는 '현재 누적 시간 / 전체 시간' 으로 */
+function updateNowTime(hostId, t, item, deck){
   var el = document.getElementById(hostId);
   if (!el) return;
   var span = el.querySelector('.np-time');
   if (!span) return;
-  span.textContent = (item.end === null)
-    ? fmtTime(t) + ' · 끝까지'
-    : fmtTime(t) + ' · 남은 ' + fmtTime(Math.max(0, item.end - t));
+  var q = (deck && deck.queue) || [];
+  var pos = 0;
+  for (var i = 0; i < q.length; i++){ if (q[i] === item){ pos = i; break; } }
+  var now = elapsedBefore(q, pos) + Math.max(0, t - (item.start || 0));
+  var tot = queueTotal(q);
+  span.textContent = fmtTime(now) + ' / ' + fmtTime(tot.sec) + (tot.unknown ? '+' : '');
 }
 
 function markPlaying(clipId){
