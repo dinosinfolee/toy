@@ -70,7 +70,7 @@
   .detail-close:hover { background: var(--bg); }
   .photo { display: grid; min-height: 150px; align-content: center; padding: 20px 16px; }
   /* 단서가 사진 안에 있다. 자세히 보기에서는 어느 쪽도 잘리면 안 된다. */
-  .photo.has-image { min-height: 0; aspect-ratio: 1 / 1; padding: 0; }
+  .photo.has-image { display: block; min-height: 0; padding: 0; }
   .photo span { color: #3c4250; font-size: .84rem; font-weight: 600; text-align: center; }
   .photo small { display: block; margin-top: 6px; color: #5c6473; font-size: .76rem; font-weight: 400; }
   .caption { padding: 12px 16px 4px; font-size: .88rem; }
@@ -227,26 +227,23 @@
 
   // 그림 파일이 아직 없어도 수업이 막히면 안 된다. 그림이 실제로 뜬 뒤에만 사진처럼
   // 보이게 하고, 없거나 실패하면 색과 설명 글자로 대신 보여 준다.
-  // fit: 목록 칸은 꽉 채워 보이는 편이 낫지만(cover), 자세히 보기에서는
-  // 단서가 잘려 나가면 안 되므로 사진 전체를 보여 준다(contain).
-  function picture(post, alt, host, fit) {
+  // 목록 칸은 정사각형 격자라 잘라서 채우고(cover), 자세히 보기는 사진이
+  // 제 모양대로 흐르게 둔다(flow). 단서가 사진 안에 있으니 거기서는 잘리면 안 된다.
+  function picture(post, alt, host, flow) {
     var box = document.createElement("div");
-    box.style.cssText = "position:absolute;inset:0;overflow:hidden;background:" + post.tint;
+    box.style.cssText = flow
+      ? "background:" + post.tint
+      : "position:absolute;inset:0;overflow:hidden;background:" + post.tint;
     if (!post.img) return box;
     var image = document.createElement("img");
     image.src = post.img;
     image.alt = alt;
     image.loading = "lazy";
-    image.style.cssText = "width:100%;height:100%;object-fit:" + (fit || "cover") + ";display:block";
-    image.addEventListener("load", function () {
-      host.classList.add("has-image");
-      // 자세히 보기에서는 칸을 사진 모양에 맞춘다. 정사각형이 아닌 그림이 와도
-      // 위아래가 잘리지도, 빈 띠가 크게 남지도 않는다. 너무 길쭉한 것만 막아 둔다.
-      if (fit === "contain" && image.naturalWidth && image.naturalHeight) {
-        var ratio = image.naturalWidth / image.naturalHeight;
-        host.style.aspectRatio = Math.min(Math.max(ratio, 0.66), 1.9) + " / 1";
-      }
-    });
+    // flow: 너비에 맞춰 높이가 따라오므로 잘리지 않는다. 화면을 다 먹지 않도록 높이만 막아 둔다.
+    image.style.cssText = flow
+      ? "display:block;width:100%;height:auto;max-height:52vh;object-fit:contain"
+      : "display:block;width:100%;height:100%;object-fit:cover";
+    image.addEventListener("load", function () { host.classList.add("has-image"); });
     image.addEventListener("error", function () { image.remove(); });
     box.appendChild(image);
     return box;
@@ -295,7 +292,7 @@
     photo.className = "photo";
     photo.style.position = "relative";
     photo.style.background = post.tint;
-    photo.appendChild(picture(post, post.photo + (post.detail ? " — " + post.detail : ""), photo, "contain"));
+    photo.appendChild(picture(post, post.photo + (post.detail ? " — " + post.detail : ""), photo, true));
     // 그림이 실제로 뜨면 이 설명은 CSS가 감춘다. 안 뜨면 이것이 사진을 대신한다.
     var label = document.createElement("span");
     label.style.position = "relative";
