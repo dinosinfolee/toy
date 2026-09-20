@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>디지털 발자국 — 해린이의 피드</title>
+<script>
+  /* CUTE가 화면 준비 전에 복원 상태를 보낼 수 있다. 여기서 받아 두었다가 아래에서 처리한다. */
+  window.__cuteQueue = [];
+  window.addEventListener("message", function (event) { if (!window.__cuteReady) window.__cuteQueue.push(event); });
+</script>
+<style>
+  /* 세 번째 예시 앱이다. 앞의 둘(모눈 기록지·명조 노트)과 또 달라야 한다.
+     여기는 '손에 쥔 화면' 쪽으로 잡았다. 둥근 모서리, 큰 여백, 밝은 회색 바탕.
+     실제 서비스의 상표·로고·아이콘은 쓰지 않는다. 가상의 앱이다. */
+  :root {
+    --ink: #16181d; --ink-2: #5a616c; --ink-3: #939aa5;
+    --line: #e8eaee; --card: #fff; --bg: #eff1f4;
+    --mark: #6d4aff; --mark-soft: #efeaff;
+    --found: #0a7c5a; --found-soft: #e3f5ee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; font-size: 14px; line-height: 1.55; }
+  /* CUTE 콘텐츠 칸을 꽉 채운다. 폭이 넓어지면 한 줄에 더 많이 보이도록 칸이 늘어난다. */
+  .wrap { width: 100%; margin: 0 auto; padding: 14px 14px 28px; }
+
+  .task { border: 1px solid var(--line); border-radius: 16px; background: var(--card); margin-bottom: 12px; padding: 16px; }
+  .task h1 { font-size: 1.05rem; font-weight: 750; }
+  .task p { margin-top: 6px; color: var(--ink-2); font-size: .84rem; }
+  .tally { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  .tally-bar { position: relative; overflow: hidden; height: 7px; flex: 1; border-radius: 99px; background: var(--line); }
+  .tally-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 99px; background: var(--found); transition: width .25s ease; }
+  .tally b { color: var(--found); font-size: .8rem; font-weight: 700; white-space: nowrap; }
+
+  .app-bar { display: flex; align-items: center; justify-content: flex-end; border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0; background: var(--card); padding: 12px 16px; }
+  .app-bar span { color: var(--ink-3); font-size: .72rem; }
+  .profile { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-top: 0; background: var(--card); padding: 14px 16px; }
+  /* 프로필 사진이 없을 때는 첫 글자로 대신한다. 뜨면 사진이 글자를 덮는다. */
+  .avatar { position: relative; display: grid; overflow: hidden; width: 56px; height: 56px; flex: none; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #cdbcff, #9fd8ff); color: #3a2f6b; font-size: 1.1rem; font-weight: 750; }
+  .avatar img { position: absolute; display: none; width: 100%; height: 100%; object-fit: cover; inset: 0; }
+  .avatar.has-image img { display: block; }
+  .profile b { display: block; font-size: .92rem; }
+  .profile small { display: block; color: var(--ink-3); font-size: .78rem; }
+  .profile .counts { margin-top: 3px; color: var(--ink-2); font-size: .75rem; }
+
+  .tabs { display: flex; border: 1px solid var(--line); border-top: 0; background: var(--card); }
+  .tabs span { flex: 1; border-top: 2px solid var(--ink); padding: 9px 0; color: var(--ink); font-size: .76rem; font-weight: 700; text-align: center; }
+  .tabs span + span { border-top-color: transparent; color: var(--ink-3); font-weight: 500; }
+
+  .grid { display: grid; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 16px 16px; background: var(--card); gap: 3px; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); overflow: hidden; padding: 3px; }
+  .tile { position: relative; display: grid; aspect-ratio: 1 / 1; align-content: center; border: 0; padding: 8px; cursor: pointer; font: inherit; text-align: center; }
+  .tile b { color: #3c4250; font-size: .8rem; font-weight: 650; }
+  .tile .no { position: absolute; top: 6px; left: 6px; border-radius: 6px; background: rgba(255,255,255,.82); padding: 1px 6px; color: #4a515e; font-size: .68rem; font-weight: 700; }
+  .tile .done { position: absolute; right: 6px; bottom: 6px; border-radius: 99px; background: var(--found); padding: 2px 8px; color: #fff; font-size: .66rem; font-weight: 700; }
+  /* 사진이 뜨면 글자는 필요 없다. 아직 사진이 없을 때만 무엇인지 알려 준다. */
+  .tile.has-image b { display: none; }
+  .photo.has-image > span { display: none; }
+  .tile:hover { filter: brightness(.96); }
+  .tile:focus-visible { outline: 3px solid var(--mark); outline-offset: -3px; }
+
+  .sheet-back { position: fixed; z-index: 20; display: grid; align-items: end; background: rgba(18,20,26,.42); inset: 0; justify-items: center; padding: 16px; }
+  .sheet-back[hidden] { display: none; }
+  .detail { width: 100%; max-width: 420px; max-height: 92vh; overflow-y: auto; border-radius: 18px; background: var(--card); box-shadow: 0 16px 48px rgba(16,18,24,.24); }
+  @media (min-height: 620px) { .sheet-back { align-items: center; } }
+  .detail-head { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding: 12px 14px; }
+  .detail-head .no { display: grid; width: 22px; height: 22px; flex: none; place-items: center; border-radius: 7px; background: var(--bg); color: var(--ink-2); font-size: .7rem; font-weight: 750; }
+  .detail-head .when { color: var(--ink-3); font-size: .75rem; }
+  .detail-head .where { border-radius: 99px; background: var(--bg); padding: 2px 8px; color: var(--ink-2); font-size: .7rem; }
+  .detail-close { margin-left: auto; border: 0; border-radius: 8px; background: transparent; padding: 4px 8px; color: var(--ink-2); cursor: pointer; font: inherit; font-size: .95rem; }
+  .detail-close:hover { background: var(--bg); }
+  .photo { display: grid; min-height: 150px; align-content: center; padding: 20px 16px; }
+  .photo span { color: #3c4250; font-size: .84rem; font-weight: 600; text-align: center; }
+  .photo small { display: block; margin-top: 6px; color: #5c6473; font-size: .76rem; font-weight: 400; }
+  .caption { padding: 12px 16px 4px; font-size: .88rem; }
+  .meta { display: flex; align-items: center; gap: 8px; padding: 0 16px 12px; color: var(--ink-3); font-size: .75rem; }
+  .heart { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border: 0; border-radius: 50%; background: transparent; cursor: pointer; padding: 0; }
+  .heart:hover { background: var(--bg); }
+  .heart svg { width: 21px; height: 21px; fill: none; stroke: var(--ink-2); stroke-width: 1.7; stroke-linejoin: round; }
+  .heart.is-on svg { fill: #e0335c; stroke: #e0335c; animation: pop .22s ease; }
+  .heart:focus-visible { outline: 2px solid var(--mark); outline-offset: 1px; }
+  @keyframes pop { 0% { transform: scale(.7); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+  .picker { border-top: 1px solid var(--line); padding: 13px 16px 16px; background: #fafbfc; border-radius: 0 0 18px 18px; }
+  .picker > p { margin-bottom: 9px; color: var(--ink-2); font-size: .79rem; font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip { border: 1px solid var(--line); border-radius: 99px; background: var(--card); padding: 6px 12px; cursor: pointer; font-size: .79rem; }
+  .chip:hover { border-color: #c3c9d4; }
+  .chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .chip.is-on { border-color: var(--found); background: var(--found-soft); color: #075c43; font-weight: 650; }
+  .chip.is-none.is-on { border-color: var(--ink-3); background: var(--bg); color: var(--ink-2); }
+  .note { width: 100%; min-height: 54px; border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; padding: 8px 10px; color: var(--ink); font: inherit; font-size: .82rem; resize: vertical; }
+  .note:focus-visible { border-color: var(--mark); outline: 2px solid var(--mark-soft); }
+
+  .fiction { border-radius: 12px; background: var(--mark-soft); margin-top: 12px; padding: 10px 14px; color: #40308c; font-size: .75rem; }
+  @media (max-width: 420px) { .wrap { padding: 10px 8px 22px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="task">
+    <h1>이 사람에 대해 무엇을 알 수 있을까</h1>
+    <p>가상의 인물 ‘해린’의 계정입니다. 게시물을 눌러 자세히 보고, 거기서 알 수 있는 것을 표시해 보세요.</p>
+    <div class="tally">
+      <div class="tally-bar"><i id="tally-fill" style="width:0%"></i></div>
+      <b id="tally-text">0 / 9 게시물 확인</b>
+    </div>
+  </section>
+
+  <div class="app-bar"><span>가상의 SNS 화면</span></div>
+  <div class="profile">
+    <div class="avatar" id="avatar"><img src="images/00-self.jpg" alt="해린의 프로필 사진" /><span>해</span></div>
+    <div>
+      <b>해린</b>
+      <small>@haerin_0417</small>
+      <div class="counts">게시물 9 · 팔로워 214 · 팔로잉 189</div>
+    </div>
+  </div>
+
+  <div class="tabs"><span>게시물</span><span>태그됨</span></div>
+  <div class="grid" id="grid"></div>
+
+  <div class="sheet-back" id="sheet" hidden>
+    <div class="detail" id="detail" role="dialog" aria-modal="true" aria-label="게시물 자세히 보기"></div>
+  </div>
+
+  <p class="fiction">해린은 실제 인물이 아니며, 이 화면은 수업을 위해 만든 가상의 SNS입니다. 게시물·번호·이름 모두 지어낸 것입니다.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── 게시물 ────────────────────────────────────────────────
+     한 게시물만으로는 아무것도 알 수 없게, 여러 개를 엮어야 드러나게 만든다.
+     전화번호는 뒷자리만, 집은 '어느 아파트 단지쯤'까지만 흘린다. */
+  var POSTS = [
+    { id: "p1", img: "images/01-busstop.jpg", when: "3월 12일 오전 8:12", where: "버스 정류장", tint: "linear-gradient(135deg,#dbe7f7,#eef3fa)",
+      thumb: "정류장", photo: "정류장에서 찍은 사진", detail: "뒤쪽 표지판에 ‘한빛중학교 앞’이라고 적혀 있다",
+      caption: "또 지각각... 버스 왜 안 와", likes: 31, comments: 4 },
+    { id: "p2", img: "images/02-desk.jpg", when: "3월 14일 오후 4:40", where: "", tint: "linear-gradient(135deg,#f7e9db,#fbf3ea)",
+      thumb: "문제집", photo: "문제집 위에 엎드린 사진", detail: "",
+      caption: "셔틀 또 놓쳤다 ㅠㅠ 수학학원 화목은 진짜 빡세", likes: 22, comments: 7 },
+    { id: "p3", img: "images/03-cake.jpg", when: "4월 17일 오후 9:05", where: "", tint: "linear-gradient(135deg,#f9dde7,#fdeef3)",
+      thumb: "케이크", photo: "케이크 사진", detail: "초가 꽂혀 있다",
+      caption: "생일 축하해준 사람들 다 고마워!!", likes: 88, comments: 26 },
+    { id: "p4", img: "images/04-dog.jpg", when: "4월 20일 오후 7:30", where: "집", tint: "linear-gradient(135deg,#e6e2d8,#f4f1ea)",
+      thumb: "강아지", photo: "강아지와 함께 찍은 거울 셀카", detail: "교복 차림이고, 들고 있는 휴대폰 뒤에 이름 스티커가 붙어 있다",
+      caption: "우리 콩이 자는 거 봐 너무 귀엽자나", likes: 54, comments: 9 },
+    { id: "p5", img: "images/05-window.jpg", when: "5월 2일 오전 7:55", where: "집", tint: "linear-gradient(135deg,#dff0e6,#eef8f1)",
+      thumb: "창밖", photo: "창밖으로 찍은 사진", detail: "건너편 아파트 동 번호가 흐릿하게 보인다",
+      caption: "창밖 벚꽃 미쳤다 아침부터 기분 좋음", likes: 47, comments: 3 },
+    { id: "p6", img: "images/06-parcel.jpg", when: "5월 9일 오후 6:20", where: "집", tint: "linear-gradient(135deg,#e9e3f7,#f4f0fb)",
+      thumb: "택배 상자", photo: "택배 상자 사진", detail: "송장 일부를 손으로 가렸는데 끝 네 자리 7412는 그대로 보인다",
+      caption: "드디어 왔다!! 2주 기다림", likes: 19, comments: 2 },
+    { id: "p7", img: "images/07-lunch.jpg", when: "5월 15일 오후 12:30", where: "", tint: "linear-gradient(135deg,#f3f0e2,#faf8ef)",
+      thumb: "급식", photo: "급식 식판 사진", detail: "",
+      caption: "오늘 급식 실화냐 이건 좀", likes: 63, comments: 15 },
+    { id: "p8", img: "images/08-screen.jpg", when: "5월 21일 오후 10:10", where: "", tint: "linear-gradient(135deg,#dfe7ef,#f0f4f8)",
+      thumb: "화면 캡처", photo: "화면을 찍은 사진", detail: "비밀번호 찾기 화면, 질문은 ‘내가 처음 키운 반려동물의 이름은?’",
+      caption: "비번 까먹어서 찾기 눌렀는데 이 질문 나옴ㅋㅋ 이건 죽어도 안 까먹지", likes: 12, comments: 1 },
+    { id: "p9", img: "images/09-order.jpg", when: "5월 24일 오후 7:40", where: "집", tint: "linear-gradient(135deg,#f5ece0,#fbf6ee)",
+      thumb: "영수증", photo: "배달 영수증 사진", detail: "전화번호 뒷자리는 ****로 가려졌지만 가운데 네 자리 3847은 그대로 있고, 주소는 ‘○○아파트 103동’까지 보인다",
+      caption: "오늘은 그냥 시켜먹기 ㅎㅎ", likes: 27, comments: 5 }
+  ];
+
+  var CLUES = [
+    { key: "name", label: "이름" },
+    { key: "face", label: "얼굴·교복" },
+    { key: "school", label: "다니는 학교·동네" },
+    { key: "birthday", label: "생일" },
+    { key: "home", label: "집 위치" },
+    { key: "routine", label: "요일별 일과" },
+    { key: "contact", label: "연락처 일부" },
+    { key: "pet", label: "반려동물 이름" },
+    { key: "password", label: "비밀번호 힌트" },
+    { key: "none", label: "특별히 없음", none: true }
+  ];
+  var CLUE_LABEL = {};
+  CLUES.forEach(function (clue) { CLUE_LABEL[clue.key] = clue.label; });
+
+  /* ── 활동 기록 ───────────────────────────────────────────── */
+  var MAX_EVENTS = 200;
+  var events = [];
+  function note(action, detail, coalesce) {
+    var last = events[events.length - 1];
+    if (coalesce && last && last.action === action && last.detail && detail &&
+        last.detail.split(" — ")[0] === detail.split(" — ")[0]) {
+      last.detail = detail; last.at = new Date().toISOString(); return;
+    }
+    events.push({ at: new Date().toISOString(), action: action, detail: detail });
+    if (events.length > MAX_EVENTS) events = events.slice(-MAX_EVENTS);
+  }
+
+  /* ── 상태 ──────────────────────────────────────────────────── */
+  var marks = {};   // { postId: { clues: [key], memo: "" } }
+  var opened = {};
+  // 좋아요는 화면 장식일 뿐이라 저장하지 않는다. 새로고침하면 사라진다.
+  var liked = {};
+  function markOf(id) {
+    if (!marks[id]) marks[id] = { clues: [], memo: "" };
+    return marks[id];
+  }
+  function postNo(id) {
+    for (var index = 0; index < POSTS.length; index += 1) if (POSTS[index].id === id) return index + 1;
+    return 0;
+  }
+  function postTitle(id) { return postNo(id) + "번 게시물"; }
+  function checkedCount() {
+    return POSTS.filter(function (post) { return marks[post.id] && marks[post.id].clues.length; }).length;
+  }
+  var CLUE_PROMPT = "이 게시물에서 알 수 있는 것은 무엇인가요?";
+
+  /* ── 그리기 ────────────────────────────────────────────────── */
+  var grid = document.getElementById("grid");
+  var sheet = document.getElementById("sheet");
+  var detail = document.getElementById("detail");
+  var fill = document.getElementById("tally-fill");
+  var tallyText = document.getElementById("tally-text");
+  var lastTile = null;
+
+  function renderTally() {
+    var done = checkedCount();
+    fill.style.width = (done / POSTS.length * 100) + "%";
+    tallyText.textContent = done + " / " + POSTS.length + " 게시물 확인";
+  }
+
+  // 그림 파일이 아직 없어도 수업이 막히면 안 된다. 그림이 실제로 뜬 뒤에만 사진처럼
+  // 보이게 하고, 없거나 실패하면 색과 설명 글자로 대신 보여 준다.
+  function picture(post, alt, host) {
+    var box = document.createElement("div");
+    box.style.cssText = "position:absolute;inset:0;overflow:hidden;background:" + post.tint;
+    if (!post.img) return box;
+    var image = document.createElement("img");
+    image.src = post.img;
+    image.alt = alt;
+    image.loading = "lazy";
+    image.style.cssText = "width:100%;height:100%;object-fit:cover;display:block";
+    image.addEventListener("load", function () { host.classList.add("has-image"); });
+    image.addEventListener("error", function () { image.remove(); });
+    box.appendChild(image);
+    return box;
+  }
+
+  function renderGrid() {
+    grid.innerHTML = "";
+    POSTS.forEach(function (post, index) {
+      var mark = markOf(post.id);
+      var tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "tile";
+      tile.style.background = post.tint;
+      tile.setAttribute("aria-label", (index + 1) + "번 게시물 · " + post.thumb + (mark.clues.length ? " · 표시함" : ""));
+      tile.appendChild(picture(post, (index + 1) + "번 게시물 사진: " + post.photo, tile));
+      var caption = document.createElement("b");
+      caption.textContent = post.thumb;
+      caption.style.position = "relative";
+      tile.appendChild(caption);
+      var no = document.createElement("span"); no.className = "no"; no.textContent = String(index + 1);
+      tile.appendChild(no);
+      if (mark.clues.length) { var done = document.createElement("span"); done.className = "done"; done.textContent = "표시함"; tile.appendChild(done); }
+      tile.addEventListener("click", function () { lastTile = tile; openPost(post, index); });
+      grid.appendChild(tile);
+    });
+    renderTally();
+  }
+
+  function openPost(post, index) {
+    var mark = markOf(post.id);
+    detail.innerHTML = "";
+
+    var head = document.createElement("div");
+    head.className = "detail-head";
+    var no = document.createElement("span"); no.className = "no"; no.textContent = String(index + 1);
+    var when = document.createElement("span"); when.className = "when"; when.textContent = post.when;
+    head.appendChild(no); head.appendChild(when);
+    if (post.where) { var where = document.createElement("span"); where.className = "where"; where.textContent = post.where; head.appendChild(where); }
+    var close = document.createElement("button");
+    close.type = "button"; close.className = "detail-close"; close.setAttribute("aria-label", "닫기"); close.textContent = "✕";
+    close.addEventListener("click", closePost);
+    head.appendChild(close);
+    detail.appendChild(head);
+
+    var photo = document.createElement("div");
+    photo.className = "photo";
+    photo.style.position = "relative";
+    photo.style.background = post.tint;
+    photo.appendChild(picture(post, post.photo + (post.detail ? " — " + post.detail : ""), photo));
+    // 그림이 실제로 뜨면 이 설명은 CSS가 감춘다. 안 뜨면 이것이 사진을 대신한다.
+    var label = document.createElement("span");
+    label.style.position = "relative";
+    label.textContent = post.photo;
+    if (post.detail) { var small = document.createElement("small"); small.textContent = post.detail; label.appendChild(small); }
+    photo.appendChild(label);
+    detail.appendChild(photo);
+
+    var caption = document.createElement("p"); caption.className = "caption"; caption.textContent = post.caption;
+    detail.appendChild(caption);
+
+    // 좋아요는 이 브라우저에서만 보이는 장식이다. 저장하지도, 기록에 남기지도 않는다.
+    var meta = document.createElement("div");
+    meta.className = "meta";
+    var heart = document.createElement("button");
+    heart.type = "button";
+    heart.className = "heart";
+    var count = document.createElement("span");
+    function paintHeart() {
+      var on = liked[post.id] === true;
+      heart.classList.toggle("is-on", on);
+      heart.setAttribute("aria-pressed", on ? "true" : "false");
+      heart.setAttribute("aria-label", on ? "좋아요 취소" : "좋아요");
+      heart.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.7 4.3 13a4.6 4.6 0 0 1 0-6.5 4.6 4.6 0 0 1 6.5 0l1.2 1.2 1.2-1.2a4.6 4.6 0 0 1 6.5 0 4.6 4.6 0 0 1 0 6.5Z"/></svg>';
+      count.textContent = "좋아요 " + (post.likes + (on ? 1 : 0)) + "개 · 댓글 " + post.comments + "개";
+    }
+    heart.addEventListener("click", function () { liked[post.id] = !liked[post.id]; paintHeart(); });
+    paintHeart();
+    meta.appendChild(heart); meta.appendChild(count);
+    detail.appendChild(meta);
+
+    var picker = document.createElement("div");
+    picker.className = "picker";
+    var ask = document.createElement("p"); ask.textContent = CLUE_PROMPT;
+    picker.appendChild(ask);
+    var chips = document.createElement("div"); chips.className = "chips";
+    CLUES.forEach(function (clue) {
+      var chip = document.createElement("label");
+      chip.className = "chip" + (clue.none ? " is-none" : "") + (mark.clues.indexOf(clue.key) !== -1 ? " is-on" : "");
+      var box = document.createElement("input");
+      box.type = "checkbox"; box.checked = mark.clues.indexOf(clue.key) !== -1;
+      box.addEventListener("change", function () {
+        if (box.checked) {
+          // '특별히 없음'과 다른 단서는 같이 설 수 없다.
+          if (clue.none) mark.clues = ["none"];
+          else mark.clues = mark.clues.filter(function (key) { return key !== "none"; }).concat([clue.key]);
+        } else {
+          mark.clues = mark.clues.filter(function (key) { return key !== clue.key; });
+        }
+        note("단서 표시함", postTitle(post.id) + " — " + (mark.clues.length ? mark.clues.map(function (key) { return CLUE_LABEL[key]; }).join(", ") : "표시 없음"), true);
+        renderGrid();
+        openPost(post, index);
+      });
+      chip.appendChild(box);
+      chip.appendChild(document.createTextNode(clue.label));
+      chips.appendChild(chip);
+    });
+    picker.appendChild(chips);
+
+    var memo = document.createElement("textarea");
+    memo.className = "note";
+    memo.placeholder = "무엇을 보고 그렇게 생각했나요? (선택)";
+    memo.value = mark.memo;
+    var timer = null;
+    memo.addEventListener("input", function () {
+      mark.memo = memo.value;
+      window.clearTimeout(timer);
+      // 글자마다 남기면 기록이 아니라 소음이 된다. 멈췄을 때 한 줄로 남긴다.
+      timer = window.setTimeout(function () {
+        if (mark.memo.trim()) note("근거 적음", postTitle(post.id) + " — " + mark.memo.trim().slice(0, 100), true);
+      }, 1200);
+    });
+    picker.appendChild(memo);
+    detail.appendChild(picker);
+
+    sheet.hidden = false;
+    close.focus();
+    if (!opened[post.id]) { opened[post.id] = true; note("게시물 살펴봄", postTitle(post.id) + " — " + post.caption.slice(0, 40)); }
+  }
+
+  function closePost() {
+    sheet.hidden = true;
+    detail.innerHTML = "";
+    if (lastTile && document.contains(lastTile)) lastTile.focus();
+  }
+  sheet.addEventListener("click", function (event) { if (event.target === sheet) closePost(); });
+  document.addEventListener("keydown", function (event) { if (event.key === "Escape" && !sheet.hidden) closePost(); });
+
+  /* ── CUTE 연동 ─────────────────────────────────────────────── */
+  var CUTE_ORIGINS = ["https://cute.sanskit.com"];
+  var DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+  function allowedOrigin(origin) { return CUTE_ORIGINS.indexOf(origin) !== -1 || DEV_ORIGIN.test(origin); }
+
+  function getCurrentState() {
+    return { schemaVersion: 1, marks: marks, opened: opened, events: events };
+  }
+  function getActivity() {
+    var results = [];
+    var kinds = {};
+    POSTS.forEach(function (post, index) {
+      var mark = marks[post.id];
+      if (!mark || !mark.clues.length) return;
+      var labels = mark.clues.map(function (key) { return CLUE_LABEL[key]; }).join(", ");
+      mark.clues.forEach(function (key) { if (key !== "none") kinds[key] = true; });
+      // 정답이 하나로 정해진 활동이 아니다. correct는 넣지 않는다.
+      results.push({
+        label: (index + 1) + "번 게시물 — 표시한 단서",
+        prompt: CLUE_PROMPT + " (게시물: \"" + post.caption + "\"" + (post.detail ? " / " + post.detail : "") + ")",
+        value: labels + (mark.memo.trim() ? " · 근거: " + mark.memo.trim().slice(0, 300) : "")
+      });
+    });
+    results.push({ label: "확인한 게시물 수", value: checkedCount() + " / " + POSTS.length });
+    var found = Object.keys(kinds).map(function (key) { return CLUE_LABEL[key]; });
+    results.push({ label: "찾아낸 정보의 종류", prompt: "여덟 게시물을 모아 보면 이 사람에 대해 무엇을 알 수 있나요?", value: found.length ? found.join(", ") : "아직 없음" });
+    return { schemaVersion: 1, events: events, results: results };
+  }
+  function restore(saved) {
+    if (!saved || typeof saved !== "object") return;
+    marks = {};
+    if (saved.marks && typeof saved.marks === "object") {
+      POSTS.forEach(function (post) {
+        var item = saved.marks[post.id];
+        if (!item || typeof item !== "object") return;
+        var clues = Array.isArray(item.clues) ? item.clues.filter(function (key) { return CLUE_LABEL[key]; }) : [];
+        marks[post.id] = { clues: clues, memo: typeof item.memo === "string" ? item.memo : "" };
+      });
+    }
+    opened = saved.opened && typeof saved.opened === "object" ? saved.opened : {};
+    if (Array.isArray(saved.events)) {
+      events = saved.events.filter(function (item) { return item && typeof item.action === "string"; }).slice(-MAX_EVENTS);
+    }
+    renderGrid();
+    note("이어서 열기", "확인한 게시물 " + checkedCount() + "개");
+  }
+
+  var answered = {};
+  function handle(event) {
+    if (event.source !== window.parent) return;
+    if (!allowedOrigin(event.origin)) return;
+    var msg = event.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.cute === "state-request") {
+      if (typeof msg.requestId !== "string" || answered[msg.requestId]) return;
+      answered[msg.requestId] = true;
+      var payload = { cute: "state-result", requestId: msg.requestId, state: {} };
+      try { payload.state = getCurrentState(); } catch (error) { payload.state = {}; }
+      // 활동 기록을 만들다 실패해도 저장 자체는 멈추면 안 된다.
+      try { var activity = getActivity(); if (activity) payload.activity = activity; } catch (error) {}
+      event.source.postMessage(payload, event.origin);
+      return;
+    }
+    if (msg.cute === "state-restore") { try { restore(msg.state); } catch (error) {} }
+  }
+
+  var avatar = document.getElementById("avatar");
+  var avatarImage = avatar.querySelector("img");
+  avatarImage.addEventListener("load", function () { avatar.classList.add("has-image"); });
+  avatarImage.addEventListener("error", function () { avatarImage.remove(); });
+
+  renderGrid();
+  note("피드 열어봄", "게시물 9개");
+  window.addEventListener("message", handle);
+  window.__cuteReady = true;
+  (window.__cuteQueue || []).forEach(handle);
+  window.__cuteQueue = [];
+})();
+</script>
+</body>
+</html>
