@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Calendar</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: sans-serif;
+    }
+  
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      width: 100vw;
+      background-color: transparent;
+      color: #000;
+    }
+  
+    .calendar-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+    }
+  
+    .calendar-header {
+      display: grid;
+      grid-template-columns: 1fr minmax(15ch, auto) 1fr;
+      align-items: center;
+      font-size: 8vmin;
+      color: #4b4b4b;
+      padding: 2vmin 1vmin;
+      margin-top: 10vmin;
+    }
+  
+    .calendar-header .nav {
+      font-size: 4vmin;
+      color: #ffffff;
+      background-color: #787774;
+      width: 6vmin;
+      height: 6vmin;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      justify-self: center;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.2s;
+      margin-top: 3vmin;
+      padding-bottom: 0.5vmin;
+    }
+  
+    .calendar-header .nav:hover {
+      background-color: #32302C;
+    }
+  
+    .calendar-header #monthYear {
+      justify-self: center;
+      font-weight: bold;
+    }
+  
+    .calendar-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+  
+    .day-names {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      text-align: center;
+      font-size: 6vmin;
+      color: #757575;
+      padding: 2vmin 0;
+      font-weight: bold;
+    }
+  
+    .day-names div:nth-child(1) { color: #ec5f5f; }
+    .day-names div:nth-child(7) { color: #5FB0EC; }
+  
+    .dates {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-template-rows: repeat(6, 1fr);
+      text-align: center;
+    } 
+  
+    .dates div {
+      font-size: 6vmin;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+  
+    .prev-month,
+    .next-month {
+      color: #ccc !important;
+    }
+  
+    .current-month {
+      color: #616161;
+    }
+  
+    .today {
+      position: relative;
+      color: #494949;
+      font-weight: bold;
+    }
+  
+    .today::before {
+      content: "";
+      position: absolute;
+      width: 12vmin;
+      height: 12vmin;
+      background-color: #FBF3DB;
+      border-radius: 30%;
+      z-index: -1;
+    }
+  
+    /* 주말 강조 */
+    .dates .current-month:nth-of-type(7n+1) { color: #ec5f5f; }
+    .dates .current-month:nth-of-type(7n)   { color: #5FB0EC; }
+  
+    /* 🌙 다크 모드 대응 */
+    @media (prefers-color-scheme: dark) {
+
+      html, body{
+        background-color: #191919;
+        color: #f0f0f0;
+      }
+  
+      .calendar-header {
+        color: #ddd;
+      }
+  
+      .calendar-header .nav {
+        background-color: #444;
+        color: #fff;
+      }
+  
+      .calendar-header .nav:hover {
+        background-color: #666;
+      }
+  
+      .day-names {
+        color: #bbb;
+      }
+  
+      .day-names div:nth-child(1) { color: #ff9999; }
+      .day-names div:nth-child(7) { color: #99cfff; }
+  
+      .prev-month,
+      .next-month {
+        color: #555 !important;
+      }
+  
+      .current-month {
+        color: #d0d0d0;
+      }
+  
+      .today {
+        color: #ffffff;
+        font-weight: bold;
+        position: relative;
+        z-index: 1;
+      }
+  
+      .today::before {
+        content: "";
+        position: absolute;
+        width: 12vmin;
+        height: 12vmin;
+        background-color: #313618;
+        z-index: -1;
+      }
+    }
+  </style>
+  
+</head>
+<body>
+
+<div class="calendar-container">
+  <div class="calendar-header">
+    <span class="nav" onclick="changeMonth(-1)">&#10094;</span>
+    <span id="monthYear"></span>
+    <span class="nav" onclick="changeMonth(1)">&#10095;</span>
+  </div>
+  <div class="calendar-body">
+    <div class="day-names">
+      <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
+    </div>
+    <div class="dates" id="calendarDates"></div>
+  </div>
+</div>
+
+<script>
+  const monthYear = document.getElementById("monthYear");
+  const calendarDates = document.getElementById("calendarDates");
+
+  let today = new Date();
+  let currentMonth = today.getMonth();
+  let currentYear = today.getFullYear();
+
+  function renderCalendar(month, year) {
+    const firstDay = new Date(year, month).getDay();
+    const lastDate = new Date(year, month + 1, 0).getDate();
+    const prevLastDate = new Date(year, month, 0).getDate();
+
+    let html = "";
+
+    for (let i = firstDay; i > 0; i--) {
+      html += `<div class="prev-month">${prevLastDate - i + 1}</div>`;
+    }
+
+    for (let i = 1; i <= lastDate; i++) {
+      const isToday =
+        i === today.getDate() &&
+        month === today.getMonth() &&
+        year === today.getFullYear();
+      const classList = isToday ? "today current-month" : "current-month";
+      html += `<div class="${classList}">${i}</div>`;
+    }
+
+    const totalCells = firstDay + lastDate;
+    const nextDays = 42 - totalCells;
+    for (let i = 1; i <= nextDays; i++) {
+      html += `<div class="next-month">${i}</div>`;
+    }
+
+    calendarDates.innerHTML = html;
+    const monthNames = ["January", "February", "March", "April", "May", "June",
+                        "July", "August", "September", "October", "November", "December"];
+    monthYear.innerText = `${monthNames[month]} ${year}`;
+  }
+
+  function changeMonth(delta) {
+    currentMonth += delta;
+    if (currentMonth > 11) {
+      currentMonth = 0;
+      currentYear++;
+    } else if (currentMonth < 0) {
+      currentMonth = 11;
+      currentYear--;
+    }
+    renderCalendar(currentMonth, currentYear);
+  }
+
+  renderCalendar(currentMonth, currentYear);
+</script>
+
+</body>
+</html>
