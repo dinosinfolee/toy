@@ -236,14 +236,8 @@
       if (typeof obj.meta.id === 'string' && /^[\w.-]{1,64}$/.test(obj.meta.id)) meta.id = obj.meta.id;
     }
 
-    // 서버가 제공하는 레이아웃(선택)
-    let layout = null;
-    if (obj.layout && typeof obj.layout === 'object' && Array.isArray(obj.layout.charts)) {
-      layout = obj.layout.charts.map(sanitizeConfig).filter(Boolean).slice(0, MAX_CHARTS);
-    }
-    const layoutGroups = layout && obj.layout.groups ? sanitizeGroups(obj.layout.groups) : [];
-    const layoutAi = layout && obj.layout.ai ? aiSanitizeImport(obj.layout.ai) : null;
-    return { rows: obj.rows, keys, columns, meta, layout, layoutGroups, layoutAi };
+    // 레이아웃은 서버에서 받지 않음(교사가 두루보드에서 직접 구성)
+    return { rows: obj.rows, keys, columns, meta };
   }
 
   // 자동 판정: 모든 값이 수(쉼표 포함 숫자 문자열 포함)면 수치. 단 0으로 시작하는 숫자 문자열(코드)은 문자
@@ -348,36 +342,20 @@
     state.typeOver = loadTypes(source.id);
     applyTypes();
 
-    // 서버가 제공한 레이아웃은 따로 보관(복사본) — [서버 레이아웃 적용]에 사용
-    state.serverLayout = v.layout ? JSON.parse(JSON.stringify({ charts: v.layout, groups: v.layoutGroups || [], ai: v.layoutAi || null })) : null;
     const same = keep && prevId === source.id;
     if (same) {
       pruneGroups();
       if (prevKeys !== state.keys.join('\u0000')) aiOnData(); else { aiAlias = aiAlias; renderAiSendSum(); }
-      return { serverLayout: !!v.layout, kept: true };
+      return { kept: true };
     }
-    // 레이아웃: 이 기기에 저장된 레이아웃이 있으면 항상 그것을 사용(교사가 고친 내용 유지).
-    // 저장된 레이아웃이 없을 때만 서버가 제공한 레이아웃을 사용하고, 이 기기에 저장함
+    // 레이아웃: 이 기기에 저장된 것을 사용
     migrateEmbedKeys(source.id);
-    const localLayout = loadLayout(source.id);
-    const localGroups = loadGroups(source.id);
-    const hasLocal = localLayout.length > 0 || localGroups.length > 0 || store.get('layout:' + source.id) !== null;
-    if (!hasLocal && v.layout) {
-      state.layout = v.layout;
-      state.groups = v.layoutGroups || [];
-      pruneGroups();
-      state.layoutFrom = 'server';
-      saveLayout();
-    } else {
-      state.layout = localLayout;
-      state.groups = localGroups;
-      pruneGroups();
-      state.layoutFrom = 'local';
-    }
+    state.layout = loadLayout(source.id);
+    state.groups = loadGroups(source.id);
+    pruneGroups();
+    state.layoutFrom = 'local';
     aiOnData();
-    // 서버 레이아웃에 분석 파트너 설정(공급자·모델·열별 전송 설정)이 있으면 함께 적용
-    if (state.layoutFrom === 'server' && v.layoutAi) aiApplyImport(v.layoutAi);
-    return { serverLayout: !!v.layout };
+    return {};
   }
 
   // ───────────── 서버 연결 ─────────────
@@ -503,7 +481,7 @@
     document.head.append(s);
   }
   function initEmbed() {
-    if (!EMBED) return;
+    if (!EMBED || document.body.classList.contains('embedded')) return;
     ensureChartLib();
     document.body.classList.add('embedded');
     $('conn-lead').textContent = 'Apps Script 웹 앱에 연결되어 있습니다. [불러오기]를 누르면 웹 앱의 자료를 가져옵니다.';
@@ -574,7 +552,6 @@
     markFetched(false);
     if (!silent) {
       let note = refetch && !first ? '자료를 다시 조회했습니다.' : '자료를 조회했습니다.';
-      if (!info.kept && state.layoutFrom === 'server') note += ' 서버가 제공한 레이아웃을 적용했습니다.';
       setMsg(note, 'ok');
     }
     if (first) await enterBoard();
@@ -687,7 +664,7 @@
 
     // 3) 연결 입력란을 아이콘 창으로 옮기고 보드 표시
     $('pop-slot').append($('conn-form'));
-    $('fab').hidden = false; $('btn-groups').hidden = false; $('btn-refresh').hidden = false;
+    $('fab').hidden = false; $('btn-groups').hidden = false; $('btn-refresh').hidden = false; $('btn-wipe').hidden = false; $('fab-export').hidden = false;
     pulseFab();
     renderAll();
   }
@@ -701,7 +678,6 @@
 
   function renderAll() {
     $('view-board').hidden = false;
-    $('btn-server-layout').hidden = !state.serverLayout;
     renderBoardHead();
     renderSummary($('pop-summary'), true);
     renderBoard();
@@ -731,7 +707,7 @@
     state.source = null; state.rows = []; state.rawRows = []; state.keys = []; state.typeOver = {}; state.keyInfo = new Map(); state.layout = []; state.groups = []; state.meta = {};
     closePop();
     closeExport();
-    $('fab').hidden = true; $('btn-groups').hidden = true; $('btn-refresh').hidden = true; aiOnData(); lastPayload = ''; lastSrc = null; fetchedAt = null; renderFetched();
+    $('fab').hidden = true; $('btn-groups').hidden = true; $('btn-refresh').hidden = true; $('btn-wipe').hidden = true; $('fab-export').hidden = true; aiOnData(); lastPayload = ''; lastSrc = null; fetchedAt = null; renderFetched();
     $('view-board').hidden = true;
     $('conn-slot').append($('conn-form'));
     $('view-connect').hidden = false;
@@ -753,7 +729,7 @@
     if (!state.source) return;
     box.append(el('h3', 'sum-title', state.meta.title || '제목 없는 자료'));
     box.append(el('p', 'sub', summaryParts().join(' · ')));
-    box.append(el('p', 'sum-note', '레이아웃: ' + (state.layoutFrom === 'server' ? '서버 제공' : '이 기기 저장') +
+    box.append(el('p', 'sum-note', '레이아웃: 이 기기 저장' +
       ' · 미입력 기준: 값 없음·null·빈 문자열 (0과 false는 입력으로 간주)'));
     const list = el('ul', 'key-list');
     let holder = box;
@@ -5387,6 +5363,8 @@
 
   // ───────────── 이벤트 연결 ─────────────
   function init() {
+    // 웹 앱 안에서 열린 경우의 화면 전환은 다른 초기화보다 먼저 (다른 부분에 문제가 있어도 적용되게)
+    try { initEmbed(); } catch (e) { /* 무시 */ }
     const savedDomain = store.get('domain');
     if (savedDomain) { $('in-domain').value = savedDomain; $('chk-save-domain').checked = true; }
     updatePreview();
@@ -5396,19 +5374,6 @@
     ['in-domain', 'in-code'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') onFetch(false); }));
     $('chk-save-domain').addEventListener('change', (e) => { if (!e.target.checked) store.del('domain'); });
     store.del('useServerLayout');
-    $('btn-server-layout').addEventListener('click', async () => {
-      const sl = state.serverLayout;
-      if (!sl) return;
-      closePop();
-      if (state.layout.length && !(await askConfirm('현재 레이아웃을 서버가 제공한 레이아웃(개체 ' + sl.charts.length + '개)으로 교체합니다. 지금 레이아웃이 필요하면 먼저 [레이아웃 내보내기]로 저장하십시오. 계속하시겠습니까?'))) return;
-      state.layout = sl.charts.map((c) => sanitizeConfig(c)).filter(Boolean);
-      state.groups = sanitizeGroups(sl.groups);
-      pruneGroups();
-      state.layoutFrom = 'server';
-      saveLayout();
-      if (sl.ai) aiApplyImport(sl.ai);
-      renderAll();
-    });
 
     $('fab').addEventListener('click', () => { if ($('pop').hidden) openPop(); else closePop(); });
     $('pop-close').addEventListener('click', closePop);
@@ -5502,7 +5467,6 @@
 
     initBuilder();
     initAI();
-    initEmbed();
     initAuto();
 
     try {
