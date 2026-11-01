@@ -321,8 +321,11 @@
     else store.del('types:' + state.source.id);
   }
 
-  function loadData(parsed, source) {
+  // keep: 같은 자료를 다시 불러올 때(새로 고침·자동 새로 고침) 현재 보드 구성과 분석 파트너 대화를 유지
+  function loadData(parsed, source, keep) {
     const v = validate(parsed);
+    const prevId = state.source ? state.source.id : null;
+    const prevKeys = state.keys.join('\u0000');
     state.rawRows = v.rows;
     state.keys = v.keys;
     state.columns = v.columns;
@@ -332,6 +335,12 @@
     state.typeOver = loadTypes(source.id);
     applyTypes();
 
+    const same = keep && prevId === source.id;
+    if (same) {
+      pruneGroups();
+      if (prevKeys !== state.keys.join('\u0000')) aiOnData(); else { aiAlias = aiAlias; renderAiSendSum(); }
+      return { serverLayout: !!v.layout, kept: true };
+    }
     // 레이아웃: '서버 레이아웃 적용'을 선택했고 서버가 제공하면 그것을, 아니면 이 기기에 저장된 것을 사용
     if ($('chk-server-layout').checked && v.layout) {
       state.layout = v.layout;
@@ -459,8 +468,23 @@
         .duruboardData();
     });
   }
+  // 웹 앱 안에서 열렸는데 그래프 도구(vendor/chart.umd.js)가 없으면(미게시·AMD 환경 등) 공개 CDN의 같은 파일을 무결성 확인 후 불러옴
+  function ensureChartLib() {
+    if (typeof window.Chart === 'function' || !EMBED) return;
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js';
+    s.integrity = 'sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG';
+    s.crossOrigin = 'anonymous';
+    const amd = window.define;
+    try { window.define = undefined; } catch (e) { /* 무시 */ }
+    const restore = () => { try { window.define = amd; } catch (e) { /* 무시 */ } };
+    s.onload = () => { restore(); if (typeof window.Chart === 'function' && state.source && !$('view-board').hidden) renderBoard(); };
+    s.onerror = restore;
+    document.head.append(s);
+  }
   function initEmbed() {
     if (!EMBED) return;
+    ensureChartLib();
     document.body.classList.add('embedded');
     $('conn-lead').textContent = 'Apps Script 웹 앱에 연결되어 있습니다. [불러오기]를 누르면 웹 앱의 자료를 가져옵니다.';
     $('btn-fetch').textContent = '불러오기';
@@ -488,53 +512,128 @@
 
     busy = true;
     $('btn-fetch').disabled = true;
+    $('btn-refresh').classList.add('spin');
     setMsg('자료를 조회하고 있습니다…');
     try {
       const parsed = await fetchFromServer(origin, code);
-      const first = !$('view-connect').hidden;
-      let info;
-      try { info = loadData(parsed, { id: 'server:' + origin.id, label: origin.label }); } catch (e) { if (e.spec) e.got = describeTop(parsed); throw e; }
-      authCode = code;
-      serverOrigin = origin;
-      let note = '자료를 조회했습니다.';
-      if ($('chk-server-layout').checked) {
-        note += info.serverLayout ? ' 서버 레이아웃을 적용했습니다.' : ' 서버에 저장된 레이아웃이 없어 이 기기의 레이아웃을 사용합니다.';
+      const src = { id: 'server:' + origin.id, label: origin.label };
+      if (await applyFetched(parsed, src, isRefetch)) {
+        authCode = code;
+        serverOrigin = origin;
       }
-      setMsg(note, 'ok');
-      if (first) await enterBoard();
-      else { closePop(); renderAll(); pulseFab(); }
     } catch (e) {
       if (e.spec) { setMsg('자료 규격 오류: ' + e.message, 'error'); showSpecError(e, origin); }
       else setMsg(e.message, 'error');
     } finally {
       busy = false;
       $('btn-fetch').disabled = false;
+      $('btn-refresh').classList.remove('spin');
     }
+  }
+
+  // ───────────── 받은 자료 반영 · 조회 시각 · 자동 새로 고침 ─────────────
+  let lastPayload = '';
+  let fetchedAt = null;
+  let fetchFailed = false;
+  let autoSec = 0;
+  let autoTimer = null;
+  let lastSrc = null;
+  // 받은 자료를 화면에 반영. 같은 자료를 다시 받은 경우(새로 고침)는 보드 구성을 유지하고, 내용이 같으면 다시 그리지 않음
+  async function applyFetched(parsed, src, refetch, silent) {
+    const payload = JSON.stringify(parsed);
+    const first = !$('view-connect').hidden;
+    if (refetch && !first && payload === lastPayload && lastSrc && lastSrc.id === src.id) {
+      markFetched(false);
+      if (!silent) setMsg('자료를 다시 조회했습니다. 바뀐 내용이 없습니다.', 'ok');
+      return true;
+    }
+    let info;
+    try { info = loadData(parsed, src, refetch && !first); } catch (e) { if (e.spec) e.got = describeTop(parsed); throw e; }
+    lastPayload = payload;
+    lastSrc = src;
+    markFetched(false);
+    if (!silent) {
+      let note = refetch && !first ? '자료를 다시 조회했습니다.' : '자료를 조회했습니다.';
+      if (!info.kept && $('chk-server-layout').checked) note += info.serverLayout ? ' 서버 레이아웃을 적용했습니다.' : ' 서버에 저장된 레이아웃이 없어 이 기기의 레이아웃을 사용합니다.';
+      setMsg(note, 'ok');
+    }
+    if (first) await enterBoard();
+    else if (silent) renderAll();
+    else { closePop(); renderAll(); pulseFab(); }
+    return true;
+  }
+  function markFetched(failed) {
+    if (!failed) fetchedAt = new Date();
+    fetchFailed = !!failed;
+    renderFetched();
+  }
+  function renderFetched() {
+    const box = $('fetched-at');
+    if (!fetchedAt || !state.source) { box.hidden = true; return; }
+    box.hidden = false;
+    const tm = fetchedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    const lab = autoSec ? ({ 30: '30초', 60: '1분', 300: '5분' })[autoSec] + '마다 자동' : '';
+    box.replaceChildren();
+    box.append(el('span', 'fetched-t', tm + ' 조회'));
+    if (lab) box.append(el('span', 'fetched-a', lab));
+    if (fetchFailed) box.append(el('span', 'fetched-e', '자동 조회 실패'));
+    box.classList.toggle('err', fetchFailed);
+    box.title = '마지막으로 자료를 가져온 시각' + (fetchFailed ? ' (최근 자동 조회는 실패)' : '');
+  }
+  // 편집 중(창이 열려 있음·끌기 중·탭이 가려짐)에는 자동 새로 고침을 건너뜀
+  function autoBusy() {
+    return busy || document.hidden || !!drag || !$('pop').hidden || !$('pop-export').hidden || !!document.querySelector('dialog[open]:not(#dlg-ai)');
+  }
+  async function autoTick() {
+    if (!state.source || !serverOrigin || !lastSrc || autoBusy()) return;
+    busy = true;
+    $('btn-refresh').classList.add('spin');
+    try {
+      const parsed = EMBED ? await gasData() : await fetchFromServer(serverOrigin, authCode);
+      await applyFetched(parsed, lastSrc, true, true);
+    } catch (e) {
+      markFetched(true);
+    } finally {
+      busy = false;
+      $('btn-refresh').classList.remove('spin');
+    }
+  }
+  function setAuto(sec) {
+    autoSec = [0, 30, 60, 300].includes(sec) ? sec : 0;
+    if (autoSec) store.set('autoRefresh', String(autoSec)); else store.del('autoRefresh');
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    if (autoSec) autoTimer = setInterval(autoTick, autoSec * 1000);
+    $('auto-seg').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.sec) === autoSec)));
+    renderFetched();
+  }
+  function initAuto() {
+    $('auto-seg').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setAuto(Number(b.dataset.sec))));
+    setAuto(Number(store.get('autoRefresh')) || 0);
+    // 탭으로 돌아오면 간격이 지났을 때 바로 한 번 조회
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && autoSec && fetchedAt && Date.now() - fetchedAt.getTime() > autoSec * 1000) autoTick();
+    });
   }
 
   async function onFetchEmbed() {
     busy = true;
     $('btn-fetch').disabled = true;
+    $('btn-refresh').classList.add('spin');
     setMsg('자료를 불러오고 있습니다…');
     const target = { id: 'embed:' + location.hostname, label: 'Apps Script 웹 앱' };
     try {
       const parsed = await gasData();
-      const first = !$('view-connect').hidden;
-      let info;
-      try { info = loadData(parsed, { id: 'server:' + target.id, label: target.label }); } catch (e) { if (e.spec) e.got = describeTop(parsed); throw e; }
-      authCode = 'embed';
-      serverOrigin = target;
-      let note = '자료를 불러왔습니다.';
-      if ($('chk-server-layout').checked) note += info.serverLayout ? ' 서버 레이아웃을 적용했습니다.' : ' 서버에 저장된 레이아웃이 없어 이 기기의 레이아웃을 사용합니다.';
-      setMsg(note, 'ok');
-      if (first) await enterBoard();
-      else { closePop(); renderAll(); pulseFab(); }
+      if (await applyFetched(parsed, { id: 'server:' + target.id, label: target.label }, !!state.source)) {
+        authCode = 'embed';
+        serverOrigin = target;
+      }
     } catch (e) {
       if (e.spec) { setMsg('자료 규격 오류: ' + e.message, 'error'); showSpecError(e, { url: 'Apps Script 웹 앱 · duruboardData()' }); }
       else setMsg(e.message, 'error');
     } finally {
       busy = false;
       $('btn-fetch').disabled = false;
+      $('btn-refresh').classList.remove('spin');
     }
   }
 
@@ -568,7 +667,7 @@
 
     // 3) 연결 입력란을 아이콘 창으로 옮기고 보드 표시
     $('pop-slot').append($('conn-form'));
-    $('fab').hidden = false; $('btn-groups').hidden = false;
+    $('fab').hidden = false; $('btn-groups').hidden = false; $('btn-refresh').hidden = false;
     pulseFab();
     renderAll();
   }
@@ -611,7 +710,7 @@
     state.source = null; state.rows = []; state.rawRows = []; state.keys = []; state.typeOver = {}; state.keyInfo = new Map(); state.layout = []; state.groups = []; state.meta = {};
     closePop();
     closeExport();
-    $('fab').hidden = true; $('btn-groups').hidden = true; aiOnData();
+    $('fab').hidden = true; $('btn-groups').hidden = true; $('btn-refresh').hidden = true; aiOnData(); lastPayload = ''; lastSrc = null; fetchedAt = null; renderFetched();
     $('view-board').hidden = true;
     $('conn-slot').append($('conn-form'));
     $('view-connect').hidden = false;
@@ -813,7 +912,7 @@
   let importGroups = [];
   let importAi = null;
 
-  const kindText = (cfg) => (cfg.kind === 'stat' ? '통계 · ' + ((STYPES.find((t) => t.id === stypeOf(cfg)) || {}).label || '') : '그래프 · ' + ((CHART_TYPES.find((t) => t.id === cfg.type) || {}).label || ''));
+  const kindText = (cfg) => (cfg.kind === 'stat' ? '통계 · ' + ((STYPES.find((t) => t.id === stypeOf(cfg)) || {}).label || '') : '그래프·표 · ' + ((CHART_TYPES.find((t) => t.id === cfg.type) || {}).label || ''));
 
   function openExport() {
     closePop();
@@ -1427,7 +1526,7 @@
     $('chk-save-domain').checked = false;
     $('chk-server-layout').checked = false;
     globalColors = {};
-    aiKey = ''; $('ai-key').value = ''; $('ai-key-keep').checked = false; keepKey(); syncKeyUi(); aiCfg = { provider: 'openai', model: '' }; renderAiSettings(); syncAiFab();
+    setAuto(0); aiKey = ''; $('ai-key').value = ''; $('ai-key-keep').checked = false; keepKey(); syncKeyUi(); aiCfg = { provider: 'openai', model: '' }; renderAiSettings(); syncAiFab();
     applyTheme('auto');
     setMsg('초기화하였습니다. 보드와 이 브라우저에 저장된 두루보드 정보를 모두 삭제하였습니다.', 'ok');
   }
@@ -2569,7 +2668,7 @@
   // 개체 종류(그래프/통계)에 따라 단계 구성 변경
   function applyKind() {
     const stat = isStat(draft);
-    const noun = stat ? '통계' : '그래프';
+    const noun = stat ? '통계' : '그래프·표';
     $('kd-chart').setAttribute('aria-checked', String(!stat));
     if (!editingId) $('cf-ok').textContent = noun + ' 추가';
     $('kd-stat').setAttribute('aria-checked', String(stat));
@@ -4035,7 +4134,7 @@
     const stat = draft && isStat(draft);
     $('pane-desc').textContent = '';
     const tbl = p === 'schema';
-    tblText.textContent = tbl ? (stat ? '통계로 전환' : '그래프로 전환') : '표로 전환';
+    tblText.textContent = tbl ? '미리보기로 전환' : '표로 전환';
     tblBtn.setAttribute('aria-pressed', String(tbl));
     mountToggle();
     const pn = document.querySelector('#builder-visual .pane-name');
@@ -4287,31 +4386,30 @@
   function aiPolSig() { return (state.source ? state.source.id : '') + '|' + state.rows.length + '|' + state.keys.map((k) => k + ':' + polOf(k)).join(','); }
 
   // 가명표: 열마다 값 순서대로 번호 부여 (가명 열이 여러 개면 ID1-, ID2- …)
+  // 가명표: 열마다 값이 처음 나온 순서대로 번호 부여. 자료를 다시 불러와도 이미 부여한 번호는 유지하고 새 값만 이어서 부여
+  const aliasWidth = () => Math.max(2, String(state.rows.length).length);
   function aliasTable() {
-    if (aiAlias) return aiAlias;
-    const fwd = new Map(), back = new Map();
+    if (!aiAlias) aiAlias = { fwd: new Map(), back: new Map(), cols: [] };
     const cols = state.keys.filter((k) => polOf(k) === 'alias');
-    cols.forEach((k, ci) => {
-      const pre = cols.length > 1 ? 'ID' + (ci + 1) + '-' : 'ID-';
-      const m = new Map();
-      state.rows.forEach((r) => {
-        const v = r[k];
-        if (isBlank(v)) return;
-        const s = rawStr(v);
-        if (m.has(s)) return;
-        const n = m.size + 1;
-        const a = pre + String(n).padStart(String(state.rows.length).length < 2 ? 2 : String(state.rows.length).length, '0');
-        m.set(s, a);
-        back.set(a, { key: k, value: display(v) });
-      });
-      fwd.set(k, m);
-    });
-    aiAlias = { fwd, back };
+    if (cols.join('\u0000') !== aiAlias.cols.join('\u0000')) { aiAlias = { fwd: new Map(), back: new Map(), cols }; }
+    cols.forEach((k) => { if (!aiAlias.fwd.has(k)) aiAlias.fwd.set(k, new Map()); state.rows.forEach((r) => aliasAssign(k, r[k])); });
     return aiAlias;
+  }
+  function aliasAssign(k, v) {
+    if (isBlank(v)) return null;
+    const m = aiAlias.fwd.get(k);
+    const s = rawStr(v);
+    if (m.has(s)) return m.get(s);
+    const ci = aiAlias.cols.indexOf(k);
+    const pre = aiAlias.cols.length > 1 ? 'ID' + (ci + 1) + '-' : 'ID-';
+    const a = pre + String(m.size + 1).padStart(aliasWidth(), '0');
+    m.set(s, a);
+    aiAlias.back.set(a, { key: k, value: display(v) });
+    return a;
   }
   function outVal(k, v) {
     if (isBlank(v)) return null;
-    if (polOf(k) === 'alias') return aliasTable().fwd.get(k).get(rawStr(v)) || null;
+    if (polOf(k) === 'alias') { aliasTable(); return aliasAssign(k, v); }
     if (typeof v === 'object') return display(v);
     return v;
   }
@@ -4719,8 +4817,7 @@
   // 가명(ID-07 등)을 찾아 표시 요소로 바꿈. 모델이 다른 붙임표(‐‑–—−)나 자릿수를 쓰더라도 인식
   // 실제 값으로의 변환은 AI에 묻지 않고 이 화면의 가명표로만 처리
   function aliasKey(pre, num) {
-    const w = Math.max(2, String(state.rows.length).length);
-    return 'ID' + pre + '-' + String(Number(num)).padStart(w, '0');
+    return 'ID' + pre + '-' + String(Number(num)).padStart(aliasWidth(), '0');
   }
   function restoreInto(node, text) {
     const al = state.source ? aliasTable() : null;
@@ -5347,6 +5444,7 @@
       if (g && t) { moveTarget = t; applyMove(g.id); }
     });
     $('btn-wipe').addEventListener('click', resetAll);
+    $('btn-refresh').addEventListener('click', () => onFetch(true));
     document.addEventListener('pointerdown', (e) => {
       if (e.target.closest && (e.target.closest('dialog') || e.target.closest('.pop') || e.target.closest('.fabs') || e.target.closest('.cp-pop'))) return;
       closePop();
@@ -5375,6 +5473,7 @@
     initBuilder();
     initAI();
     initEmbed();
+    initAuto();
 
     try {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (state.source) renderBoard(); });

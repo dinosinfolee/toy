@@ -2503,3 +2503,27 @@ html:has(#dlg-ai.dock[open]) .pop, html.ai-docked .pop { left: calc((100vw - var
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bm2a: #7b82f2; --bm2b: #5f66e4; --bm-face: #ffffff; } }
 /* Apps Script 웹 앱 안에서 열린 경우: 주소·인증코드 입력 숨김 */
 body.embedded .conn-net { display: none !important; }
+/* 새로 고침 중 회전, 상단 단추 5개 여백 */
+.fab.spin svg { animation: fab-spin .8s linear infinite; }
+@keyframes fab-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .fab.spin svg { animation: none; } }
+@media (max-width: 943.98px) { .app-header { padding-right: 200px !important; } }
+@media (min-width: 944px) { .app-header { padding-right: 270px !important; } }
+#btn-wipe:hover { color: var(--danger); }
+/* 마지막 조회 시각 (넓은 화면에서 새로 고침 단추 왼쪽) */
+.fetched { display: none; }
+@media (min-width: 944px) {
+  .fetched:not([hidden]) { display: inline-flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 1px; margin-right: 4px; line-height: 1.2; white-space: nowrap; }
+  .fetched-t { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .fetched-a { font-size: 11px; color: var(--accent); font-weight: 600; }
+  .fetched-e { font-size: 11px; color: var(--danger); font-weight: 600; }
+  .app-header { padding-right: 360px !important; }
+}
+.auto-row { margin-top: 2px; }
+/* 개체 편집: 상단 미리보기 영역 높이 고정 (선택에 따라 높이가 바뀌지 않게, 넘치는 내용은 안에서 스크롤) */
+.dialog.builder .builder-visual .vis-pane { height: clamp(250px, 40dvh, 400px) !important; max-height: none !important; overflow: hidden; }
+#vp-preview { display: flex !important; flex-direction: column; min-height: 0; }
+#vp-preview .pv-box { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; display: flex; flex-direction: column; }
+#vp-preview .pv-plot { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#vp-preview .chart-box.small { flex: 1 1 auto; height: auto !important; min-height: 120px; }
+#vp-schema { overflow-y: auto; }

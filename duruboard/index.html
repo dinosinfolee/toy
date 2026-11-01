@@ -37,8 +37,12 @@
     </div>
     <!-- 자료를 불러온 뒤 우측 상단에 표시되는 버튼 -->
     <div id="fabs" class="fabs">
-    <button type="button" id="btn-wipe" class="fab" aria-label="초기화" title="초기화">
+    <span id="fetched-at" class="fetched" hidden></span>
+    <button type="button" id="btn-refresh" class="fab" hidden aria-label="새로 고침 (자료 다시 조회)" title="새로 고침">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg>
+    </button>
+    <button type="button" id="btn-wipe" class="fab" aria-label="초기화 (보드와 저장 정보 모두 삭제)" title="초기화">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15"/><path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/><path d="M6.5 7l.8 11.6A1.6 1.6 0 0 0 8.9 20h6.2a1.6 1.6 0 0 0 1.6-1.4L17.5 7"/><path d="M10.3 11v5M13.7 11v5"/></svg>
     </button>
     <button type="button" id="btn-groups" class="fab" hidden aria-label="그룹 관리" title="그룹 관리">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 12.5h8M8 15.5h5"/></svg>
@@ -71,6 +75,15 @@
           <button type="button" role="radio" data-mode="light" aria-checked="false">밝게</button>
           <button type="button" role="radio" data-mode="dark" aria-checked="false">어둡게</button>
           <button type="button" role="radio" data-mode="auto" aria-checked="true">자동</button>
+        </div>
+      </div>
+      <div class="theme-row auto-row">
+        <span class="field-label">자동 새로 고침</span>
+        <div id="auto-seg" class="seg-theme" role="radiogroup" aria-label="자동 새로 고침 간격">
+          <button type="button" role="radio" data-sec="0" aria-checked="true">끔</button>
+          <button type="button" role="radio" data-sec="30" aria-checked="false">30초</button>
+          <button type="button" role="radio" data-sec="60" aria-checked="false">1분</button>
+          <button type="button" role="radio" data-sec="300" aria-checked="false">5분</button>
         </div>
       </div>
       <div class="clr-sec">
@@ -239,7 +252,7 @@
           <input id="cf-title" class="title-edit" type="text" autocomplete="off" maxlength="100" aria-label="제목" hidden>
           <button type="button" id="btn-title-edit" class="fx-btn" aria-label="제목 수정" title="제목 수정"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3"/><path d="M13.5 7.5l3 3"/></svg></button>
         </div>
-        <span id="kind-name" class="kind-name" hidden>그래프 추가</span>
+        <span id="kind-name" class="kind-name" hidden>그래프·표 추가</span>
         <button type="button" id="btn-help" class="guide-btn"><svg class="q-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.7 9.4a2.4 2.4 0 0 1 4.6.8c0 1.6-2.3 2.1-2.3 3.5"/><circle class="q-dot" cx="12" cy="17" r="1"/></svg><span>사용 안내</span></button>
       </div>
       <div class="builder-grid">
@@ -415,7 +428,7 @@
             <div class="pv-head">
               <p class="vis-label">결과</p>
               <div class="kind-seg" role="radiogroup" aria-label="개체 종류">
-                <button type="button" id="kd-chart" role="radio" aria-checked="true">그래프</button>
+                <button type="button" id="kd-chart" role="radio" aria-checked="true">그래프·표</button>
                 <button type="button" id="kd-stat" role="radio" aria-checked="false">통계</button>
               </div>
             </div>
@@ -472,7 +485,7 @@
         
       </ol>
       <div class="guide-box">
-        <p><strong>표로 전환</strong> 미리보기 오른쪽 아래의 [표로 전환]을 누르면 그 자리에 자료 표가 표시되며, 선택한 열과 계산 결과가 색으로 구분됩니다. [그래프로 전환]·[통계로 전환]을 누르면 돌아갑니다.</p>
+        <p><strong>표로 전환</strong> 미리보기 오른쪽 아래의 [표로 전환]을 누르면 그 자리에 자료 표가 표시되며, 선택한 열과 계산 결과가 색으로 구분됩니다. [미리보기로 전환]을 누르면 돌아갑니다.</p>
         <p><strong>용어</strong> 입력 칸: 값이 들어 있는 칸 · 미입력 칸: 빈칸 · 행: 가로줄(보통 학생 한 명) · 열: 세로줄(단원, 과제 등)</p>
       </div>
       <div class="dialog-actions">
@@ -499,8 +512,8 @@
       <div class="kind-cards kc-gap">
         <button type="button" id="kc-chart" class="kind-card">
           <svg class="kc-art" viewBox="0 0 120 64" aria-hidden="true"><path class="kc-axis" d="M8 56h104"/><rect x="16" y="30" width="14" height="26" rx="2"/><rect x="38" y="14" width="14" height="42" rx="2"/><rect x="60" y="24" width="14" height="32" rx="2"/><rect x="82" y="8" width="14" height="48" rx="2"/></svg>
-          <b>그래프</b>
-          <span>항목별 값을 막대, 꺾은선 등으로 비교합니다.</span>
+          <b>그래프·표</b>
+          <span>항목별 값을 막대, 꺾은선, 표, 명단 등으로 비교합니다.</span>
         </button>
         <button type="button" id="kc-stat" class="kind-card">
           <svg class="kc-art" viewBox="0 0 120 64" aria-hidden="true"><rect class="kc-box" x="14" y="6" width="92" height="52" rx="8"/><rect class="kc-line" x="26" y="16" width="34" height="5" rx="2.5"/><text x="26" y="44" class="kc-num">84.7%</text></svg>
