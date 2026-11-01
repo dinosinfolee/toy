@@ -321,6 +321,19 @@
     else store.del('types:' + state.source.id);
   }
 
+  // 이전 판에서 웹 앱 안 열기의 저장 이름에 화면 주소가 들어가 있던 것을 새 이름으로 옮김 (한 번만)
+  function migrateEmbedKeys(id) {
+    if (!/^server:embed(#|$)/.test(id) || store.get('layout:' + id) !== null) return;
+    try {
+      const ls = window.localStorage;
+      const suffix = id.slice('server:embed'.length);
+      for (let i = 0; i < ls.length; i++) {
+        const k = ls.key(i);
+        const m = k && k.match(/^duruboard:(layout|groups|types|title|aipol):server:embed:[^#]+(#.*)?$/);
+        if (m && (m[2] || '') === suffix) store.set(m[1] + ':' + id, ls.getItem(k));
+      }
+    } catch (e) { /* 저장소 사용 불가 */ }
+  }
   // keep: 같은 자료를 다시 불러올 때(새로 고침·자동 새로 고침) 현재 보드 구성과 분석 파트너 대화를 유지
   function loadData(parsed, source, keep) {
     const v = validate(parsed);
@@ -335,22 +348,29 @@
     state.typeOver = loadTypes(source.id);
     applyTypes();
 
+    // 서버가 제공한 레이아웃은 따로 보관(복사본) — [서버 레이아웃 적용]에 사용
+    state.serverLayout = v.layout ? JSON.parse(JSON.stringify({ charts: v.layout, groups: v.layoutGroups || [], ai: v.layoutAi || null })) : null;
     const same = keep && prevId === source.id;
     if (same) {
       pruneGroups();
       if (prevKeys !== state.keys.join('\u0000')) aiOnData(); else { aiAlias = aiAlias; renderAiSendSum(); }
       return { serverLayout: !!v.layout, kept: true };
     }
-    // 레이아웃: '서버 레이아웃 적용'을 선택했고 서버가 제공하면 그것을, 아니면 이 기기에 저장된 것을 사용
-    if ($('chk-server-layout').checked && v.layout) {
+    // 레이아웃: 이 기기에 저장된 레이아웃이 있으면 항상 그것을 사용(교사가 고친 내용 유지).
+    // 저장된 레이아웃이 없을 때만 서버가 제공한 레이아웃을 사용하고, 이 기기에 저장함
+    migrateEmbedKeys(source.id);
+    const localLayout = loadLayout(source.id);
+    const localGroups = loadGroups(source.id);
+    const hasLocal = localLayout.length > 0 || localGroups.length > 0 || store.get('layout:' + source.id) !== null;
+    if (!hasLocal && v.layout) {
       state.layout = v.layout;
       state.groups = v.layoutGroups || [];
       pruneGroups();
       state.layoutFrom = 'server';
       saveLayout();
     } else {
-      state.layout = loadLayout(source.id);
-      state.groups = loadGroups(source.id);
+      state.layout = localLayout;
+      state.groups = localGroups;
       pruneGroups();
       state.layoutFrom = 'local';
     }
@@ -554,7 +574,7 @@
     markFetched(false);
     if (!silent) {
       let note = refetch && !first ? '자료를 다시 조회했습니다.' : '자료를 조회했습니다.';
-      if (!info.kept && $('chk-server-layout').checked) note += info.serverLayout ? ' 서버 레이아웃을 적용했습니다.' : ' 서버에 저장된 레이아웃이 없어 이 기기의 레이아웃을 사용합니다.';
+      if (!info.kept && state.layoutFrom === 'server') note += ' 서버가 제공한 레이아웃을 적용했습니다.';
       setMsg(note, 'ok');
     }
     if (first) await enterBoard();
@@ -620,7 +640,7 @@
     $('btn-fetch').disabled = true;
     $('btn-refresh').classList.add('spin');
     setMsg('자료를 불러오고 있습니다…');
-    const target = { id: 'embed:' + location.hostname, label: 'Apps Script 웹 앱' };
+    const target = { id: 'embed', label: 'Apps Script 웹 앱' };
     try {
       const parsed = await gasData();
       if (await applyFetched(parsed, { id: 'server:' + target.id, label: target.label }, !!state.source)) {
@@ -681,6 +701,7 @@
 
   function renderAll() {
     $('view-board').hidden = false;
+    $('btn-server-layout').hidden = !state.serverLayout;
     renderBoardHead();
     renderSummary($('pop-summary'), true);
     renderBoard();
@@ -899,8 +920,8 @@
 
   function saveLayout() {
     if (!state.source) return;
-    if (state.layout.length) store.set('layout:' + state.source.id, JSON.stringify(state.layout));
-    else store.del('layout:' + state.source.id);
+    // 개체를 모두 지운 경우도 '빈 레이아웃'으로 저장하여, 다음에 서버 레이아웃으로 바뀌지 않게 함
+    store.set('layout:' + state.source.id, JSON.stringify(state.layout));
     if (state.groups.length) store.set('groups:' + state.source.id, JSON.stringify(state.groups));
     else store.del('groups:' + state.source.id);
   }
@@ -1524,7 +1545,6 @@
     $('in-code').value = '';
     $('in-domain').dispatchEvent(new Event('input'));
     $('chk-save-domain').checked = false;
-    $('chk-server-layout').checked = false;
     globalColors = {};
     setAuto(0); aiKey = ''; $('ai-key').value = ''; $('ai-key-keep').checked = false; keepKey(); syncKeyUi(); aiCfg = { provider: 'openai', model: '' }; renderAiSettings(); syncAiFab();
     applyTheme('auto');
@@ -5369,15 +5389,25 @@
   function init() {
     const savedDomain = store.get('domain');
     if (savedDomain) { $('in-domain').value = savedDomain; $('chk-save-domain').checked = true; }
-    $('chk-server-layout').checked = store.get('useServerLayout') === '1';
     updatePreview();
 
     $('in-domain').addEventListener('input', updatePreview);
     $('btn-fetch').addEventListener('click', () => onFetch(false));
     ['in-domain', 'in-code'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') onFetch(false); }));
     $('chk-save-domain').addEventListener('change', (e) => { if (!e.target.checked) store.del('domain'); });
-    $('chk-server-layout').addEventListener('change', (e) => {
-      if (e.target.checked) store.set('useServerLayout', '1'); else store.del('useServerLayout');
+    store.del('useServerLayout');
+    $('btn-server-layout').addEventListener('click', async () => {
+      const sl = state.serverLayout;
+      if (!sl) return;
+      closePop();
+      if (state.layout.length && !(await askConfirm('현재 레이아웃을 서버가 제공한 레이아웃(개체 ' + sl.charts.length + '개)으로 교체합니다. 지금 레이아웃이 필요하면 먼저 [레이아웃 내보내기]로 저장하십시오. 계속하시겠습니까?'))) return;
+      state.layout = sl.charts.map((c) => sanitizeConfig(c)).filter(Boolean);
+      state.groups = sanitizeGroups(sl.groups);
+      pruneGroups();
+      state.layoutFrom = 'server';
+      saveLayout();
+      if (sl.ai) aiApplyImport(sl.ai);
+      renderAll();
     });
 
     $('fab').addEventListener('click', () => { if ($('pop').hidden) openPop(); else closePop(); });
