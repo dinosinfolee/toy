@@ -4110,15 +4110,12 @@
   // 표 ↔ 결과 전환 단추: 미리보기를 다시 그려도 사라지지 않도록 참조를 보관하고, 결과 영역 오른쪽 아래에 배치
   const tblBtn = document.getElementById('btn-table');
   const tblText = document.getElementById('btn-table-text');
+  // [표로 전환]·[미리보기로 전환]은 같은 자리(위쪽 영역 오른쪽 아래)에 고정하여 바로 다시 누를 수 있게 함
   function mountToggle() {
     if (!tblBtn) return;
-    if ($('builder-visual').dataset.pane === 'schema') { $('schema-foot').append(tblBtn); return; }
-    const box = $('pv-box');
-    const slot = box.querySelector('.tgl-slot');
-    if (slot && !slot.closest('.pv-dim')) { slot.append(tblBtn); return; }
-    let f = box.querySelector(':scope > .tgl-foot');
-    if (!f) { f = el('div', 'tgl-foot'); box.append(f); }
-    f.append(tblBtn);
+    const bv = $('builder-visual');
+    tblBtn.classList.add('tgl-fixed');
+    if (tblBtn.parentNode !== bv) bv.append(tblBtn);
   }
   function setVisPane(p) {
     setVisCollapsed(false);
@@ -4504,15 +4501,26 @@
     }
   ];
 
+  // 대화마다 자료 구조를 미리 제공하여, 모델이 열 구성을 묻거나 허락을 구하지 않게 함
+  function schemaBrief() {
+    try {
+      let t = JSON.stringify(toolSchema());
+      if (t.length > 12000) t = t.slice(0, 12000) + '…(생략, 자세한 내용은 get_schema로 확인)';
+      return t;
+    } catch (e) { return '(확인 불가)'; }
+  }
   function aiSystem() {
     return [
       '당신은 교사의 학급 자료 분석을 돕는 "두루보드 분석 파트너"입니다. 한국어 존댓말(하십시오체)로 간결하게 답하십시오.',
-      '자료는 도구로만 확인할 수 있습니다. 먼저 get_schema를 호출하여 열 구성을 확인하고, 필요한 계산은 query_rows·aggregate로 하십시오. 숫자를 추측하지 마십시오.',
+      '자료는 도구로만 확인할 수 있습니다. 필요한 계산은 query_rows·aggregate로 하십시오. 숫자를 추측하지 마십시오.',
+      '도구는 교사의 허락을 구하지 말고 필요할 때 즉시 호출하십시오. "조회해도 되는지", "결과를 공유해 달라"처럼 묻지 마십시오. 도구 결과는 교사에게 보이지 않으므로 결과를 근거로 질문에 바로 답하십시오. 답변에 도구 이름(get_schema 등)을 쓰지 마십시오.',
+      '이미 한 답변을 되풀이하지 마십시오.',
       'ID-07처럼 가명으로 표시된 값은 그대로 사용하여 답하십시오. 가명의 실제 값을 추측하거나 요구하지 마십시오. 교사 화면에서는 자동으로 원래 값으로 표시됩니다.',
       '교사가 그래프·표·통계 카드를 원하거나 보드에 도움이 될 개체가 있으면 propose_object로 제안하십시오. 제안은 교사가 확인한 뒤 추가됩니다.',
       '개체 종류: 숫자 하나로 요약할 때만 통계(stat), 분포는 히스토그램, 반별·항목별 비교는 막대, 학생 목록은 표(table)로 제안하십시오.',
       '도움이 필요한 학생을 찾을 때는 미입력·낮은 점수 등 자료에 근거한 기준을 밝히십시오. 답변은 짧은 문단과 목록 위주로 작성하고, 표는 꼭 필요할 때만 사용하십시오.',
-      '보드 제목: ' + (state.meta.title || '(없음)')
+      '보드 제목: ' + (state.meta.title || '(없음)'),
+      '현재 자료 구조(전송 설정 반영, 가명 열은 가명으로 표시): ' + schemaBrief()
     ].join('\n');
   }
 
@@ -5067,12 +5075,22 @@
     aiBubble('me', ub);
     aiMsgs.push({ role: 'user', text });
     aiSetBusy(true);
+    let nudged = false;
+    const norm = (t) => String(t || '').replace(/\s+/g, '');
+    const saidBefore = (t) => aiMsgs.some((m) => m.role === 'assistant' && m.text && norm(m.text) === norm(t));
     try {
       for (let round = 0; round < AI_MAX_ROUNDS; round++) {
         const r = await aiCall();
+        const dup = !!r.text && !r.calls.length && norm(r.text).length > 20 && saidBefore(r.text);
         aiMsgs.push({ role: 'assistant', text: r.text, calls: r.calls, raw: r.raw, prov: aiCfg.provider });
+        if (dup && !nudged && round < AI_MAX_ROUNDS - 1) {
+          // 같은 답을 되풀이하면 표시하지 않고, 확인한 자료로 바로 답하도록 한 번 더 요청함
+          nudged = true;
+          aiMsgs.push({ role: 'user', hidden: true, text: '방금과 같은 답변입니다. 교사에게 다시 묻지 말고, 확인한 자료를 근거로 원래 질문에 바로 답하십시오. 필요하면 도구를 더 호출하십시오.' });
+          continue;
+        }
         aiThinking(false);
-        if (r.text) aiAnswer(r.text);
+        if (r.text && !dup) aiAnswer(r.text);
         if (!r.calls.length) break;
         const results = r.calls.map((c) => {
           const out = runTool(c.name, c.args);
@@ -5093,7 +5111,7 @@
         : e.message;
       aiErr(msg);
       // 실패한 질문은 기록에서 제외하여 다음 요청이 깨지지 않게 함
-      while (aiMsgs.length && aiMsgs[aiMsgs.length - 1].role !== 'user') aiMsgs.pop();
+      while (aiMsgs.length && !(aiMsgs[aiMsgs.length - 1].role === 'user' && !aiMsgs[aiMsgs.length - 1].hidden)) aiMsgs.pop();
       if (aiMsgs.length) aiMsgs.pop();
     } finally {
       aiAbort = null;
@@ -5102,7 +5120,7 @@
     }
   }
   let aiConfirmedProv = '';
-  function autoGrow() { const t = $('ai-in'); t.style.height = 'auto'; t.style.height = Math.min(140, t.scrollHeight) + 'px'; }
+  function autoGrow() { const t = $('ai-in'); t.style.height = 'auto'; const h = t.scrollHeight; t.style.height = Math.min(140, h) + 'px'; t.classList.toggle('scroll', h > 140); t.scrollLeft = 0; }
   function aiReset() {
     aiCharts.forEach((c) => { try { c.destroy(); } catch (e) { /* 무시 */ } });
     aiCharts = [];

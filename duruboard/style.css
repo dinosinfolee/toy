@@ -2527,3 +2527,21 @@ body.embedded .conn-net { display: none !important; }
 #vp-preview .pv-plot { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 #vp-preview .chart-box.small { flex: 1 1 auto; height: auto !important; min-height: 120px; }
 #vp-schema { overflow-y: auto; }
+/* 항목 기준 목록: 선택한 줄 위아래 구분선이 소수점 위치에서 번쩍이지 않도록 정리 */
+.ib-card { border-top: 1px solid var(--line-soft) !important; transition: none; backface-visibility: hidden; }
+.ib-card:first-child { border-top-color: transparent !important; }
+.ib-card[aria-pressed="true"], .ib-card[aria-pressed="true"] + .ib-card { border-top-color: transparent !important; }
+/* 표·미리보기 전환 단추: 두 화면에서 같은 위치(위쪽 영역 오른쪽 아래)에 고정 */
+#builder-visual .tbl-switch.tgl-fixed { position: absolute; right: 12px; bottom: 10px; z-index: 6; background: var(--surface); box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+#builder-visual .tbl-switch.tgl-fixed:hover, #builder-visual .tbl-switch.tgl-fixed:focus-visible { background: var(--accent-soft); }
+.dialog.builder .builder-visual .vis-pane { padding-bottom: 34px; box-sizing: border-box; }
+#builder-visual[data-collapsed="true"] .tbl-switch.tgl-fixed { display: none; }
+#schema-foot:empty, .tgl-slot:empty, .tgl-foot:empty { display: none; }
+/* 전환 단추의 기준 상자: 세부 설정 영역(미리보기·자료 표 공통) */
+.dialog.builder #builder-visual:not([style*="sticky"]) { position: relative; }
+/* 분석 파트너 입력부: 제안 문구는 줄바꿈하여 모두 표시하고, 입력란에는 가로 스크롤을 두지 않음 */
+.ai-starters { flex-wrap: wrap; overflow: visible; padding-bottom: 8px; }
+.ai-starters > * { max-width: 100%; white-space: normal; text-align: left; }
+.ai-input textarea { overflow-x: hidden; overflow-y: hidden; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; min-width: 0; scrollbar-width: thin; }
+.ai-input textarea.scroll { overflow-y: auto; }
+.ai-input textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
