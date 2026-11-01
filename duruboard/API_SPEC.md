@@ -104,40 +104,8 @@ Accept: application/json
 | `rows` | 필수 | 행 객체의 배열. 키는 모든 행에서 모아 사용합니다. |
 | `columns` | 선택 | 열별 표시 이름(`label`), 자료형(`type`: `number` 수치 / `string` 문자 / `boolean` 논리 / `mixed` 혼합), 식별 열 여부(`role`: `"id"`) |
 | `meta` | 선택 | `id`(표 구분 이름), `title`(제목), `source`(출처), `updatedAt`(기준 시각) |
-| `layout` | 선택 | 서버가 제공하는 기본 레이아웃 `{ "charts": [ … ], "groups": [ … ] }`. 두루보드의 [레이아웃 내보내기]로 만든 내용을 그대로 넣습니다. 사용자가 '서버에 저장된 레이아웃이 있으면 불러오기'를 선택한 경우에만 적용됩니다. |
 
-- `layout.charts`의 각 항목 형식: `{ "kind": "chart" | "stat", "title": "학생별 진도율", "mode": "col" | "row", "cols": ["1단원", …], "label": "id", "read": "filled" | "blank" | "num", "how": "each" | "sum" | "avg" | "max" | "min", "type": "bar" | "hbar" | "line" | "hist" | "table" | "list", "pct": true | false }`
-  - `kind`: 그래프(chart) 또는 통계(stat). 통계는 선택한 열의 모든 칸을 하나의 값으로 집계하며 `mode`·`label`·`type`을 사용하지 않습니다.
-  - `mode`: 집계 기준 (행 기준 / 열 기준), `label`: 행 기준일 때 행 이름 열(막대마다 표시되는 이름)
-  - `read`: 값 해석 (입력 여부 / 미입력 여부 / 숫자 값)
-  - `pct`: 비율(%) 표시. 입력 여부·미입력 여부는 `값 ÷ 가능한 최댓값(칸 수)`, 숫자 값은 `값 ÷ 가장 큰 항목의 값`으로 환산합니다.
-  - `type`의 `list`(명단)는 행 기준 그래프에서 해당 항목을 목록으로 표시합니다. `hl`(선택): `none` | `min` | `max` — 최저값·최고값 강조.
-  - `type`의 `hist`(히스토그램)는 행 기준 그래프에서 값의 분포를 구간별 항목 수로 표시합니다.
-  - `filter`(선택): 대상 행 조건. `{ "op": "and", "items": [ … ] }` 형식이며 `items`의 조건을 모두 만족하는 행만 사용합니다. 조건 형식:
-    - 값 선택: `{ "col": "반", "kind": "vals", "vals": ["2-1", "2-2"], "blank": false, "not": false }` — 값 중 하나에 해당(`blank`가 참이면 빈칸 포함), `not`이 참이면 제외
-    - 범위: `{ "col": "rate", "kind": "range", "lo": 0, "hi": 70, "not": false }` — 범위 안(경계 포함), `not`이 참이면 범위 밖
-  - `range`(선택): 산출 범위. `{ "mode": "top" | "bottom" | "le" | "ge", "n": 10, "unit": "pct" | "cnt" }`. 상위·하위는 `n`%(pct) 또는 `n`개(cnt), le(≤)·ge(≥)는 기준값입니다. 행 기준 그래프는 항목별 값, 통계·열별 그래프는 행별 값을 기준으로 합니다.
-  - `group`(선택): 개체가 속한 그룹의 `id`. `layout.groups`의 각 항목은 `{ "id": "g1", "name": "정보과학", "parent": null }` 형식이며, `parent`에 다른 최상위 그룹의 `id`를 넣으면 하위 그룹이 됩니다(최대 2단계, 그룹 최대 30개).
-  - `how`: 계산 방식 (열별 개별 표시 / 합계 / 평균 / 최댓값 / 최솟값). `each`는 행 기준 그래프에서만 사용합니다.
-- `layout.ai`(선택): 분석 파트너 설정. `{ "provider": "openai" | "anthropic" | "gemini" | "upstage", "model": "모델명", "columns": { "열 이름": "send" | "alias" | "drop" } }`. `columns`는 열별 전송 설정(전송·가명·제외)입니다. **인증 키는 넣지 않으며, 넣더라도 두루보드는 읽지 않습니다.**
-
-서버 레이아웃 예시 (그룹 포함):
-
-```json
-"layout": {
-  "groups": [
-    { "id": "g-sum", "name": "요약", "parent": null },
-    { "id": "g-info", "name": "정보과학", "parent": null },
-    { "id": "g-info-a", "name": "A반", "parent": "g-info" }
-  ],
-  "charts": [
-    { "id": "srv0", "group": "g-sum", "kind": "stat", "title": "전체 진도율", "cols": ["1단원", "2단원", "3단원"], "read": "filled", "how": "avg" },
-    { "id": "srv1", "group": "g-info", "kind": "chart", "title": "단원별 완료 인원", "mode": "col", "cols": ["1단원", "2단원", "3단원"], "read": "filled", "how": "sum", "type": "bar" },
-    { "id": "srv2", "group": "g-info-a", "kind": "chart", "title": "학생별 진도율", "mode": "row", "label": "id", "cols": ["1단원", "2단원", "3단원"], "read": "filled", "how": "avg", "type": "hbar" }
-  ],
-  "ai": { "provider": "upstage", "model": "solar-pro3", "columns": { "id": "alias" } }
-}
-```
+레이아웃(그래프·표·통계 구성)은 응답에 넣지 않습니다. 교사가 두루보드에서 직접 구성하며, 구성은 교사의 브라우저에 저장되고 [레이아웃 내보내기]·[레이아웃 불러오기]로 다른 교사와 나눌 수 있습니다. 응답에 `layout`이 있어도 두루보드는 사용하지 않습니다.
 
 
 ## 3. Apps Script 연결 방식 (Google Apps Script 웹 앱)
